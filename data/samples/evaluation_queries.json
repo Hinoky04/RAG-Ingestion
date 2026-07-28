@@ -1,0 +1,92 @@
+[
+  {
+    "id": "client_a_refund_escalation_clean",
+    "dataset": "client_a_clean_sop",
+    "collection": "daythree_demo_clean",
+    "client_id": "client_a",
+    "query": "When must a refund be escalated?",
+    "expected_keywords": ["RM500", "supervisor"],
+    "notes": "Checks whether the clean Client A SOP returns the refund escalation threshold."
+  },
+  {
+    "id": "client_a_damaged_item_clean",
+    "dataset": "client_a_clean_sop",
+    "collection": "daythree_demo_clean",
+    "client_id": "client_a",
+    "query": "What evidence is required for damaged item refund?",
+    "expected_keywords": ["photo evidence", "damaged item"],
+    "notes": "Checks whether damaged item evidence rules are retrievable."
+  },
+  {
+    "id": "client_a_timeline_clean",
+    "dataset": "client_a_clean_sop",
+    "collection": "daythree_demo_clean",
+    "client_id": "client_a",
+    "query": "How long does an approved refund take?",
+    "expected_keywords": ["7 working days", "approval"],
+    "notes": "Checks whether refund timeline rules are retrievable."
+  },
+  {
+    "id": "client_b_refund_escalation_clean",
+    "dataset": "client_b_clean_sop",
+    "collection": "daythree_demo_clean",
+    "client_id": "client_b",
+    "query": "When must a refund be escalated?",
+    "expected_keywords": ["RM300", "team lead"],
+    "notes": "Checks whether Client B rules stay separate from Client A rules."
+  },
+  {
+    "id": "client_a_refund_escalation_messy",
+    "dataset": "client_a_messy_sop",
+    "collection": "daythree_demo_messy",
+    "client_id": "client_a",
+    "query": "When must a refund be escalated?",
+    "expected_keywords": ["RM500", "supervisor"],
+    "notes": "Checks whether the messy PDF still retrieves the main escalation rule."
+  },
+  {
+    "id": "client_a_fraud_messy",
+    "dataset": "client_a_messy_sop",
+    "collection": "daythree_demo_messy",
+    "client_id": "client_a",
+    "query": "Who handles suspected fraud?",
+    "expected_keywords": ["fraud", "risk team"],
+    "notes": "Checks whether risk escalation survives messy parsing and chunking."
+  },
+  {
+    "id": "public_call_back_time",
+    "dataset": "public_customer_service_escalation",
+    "collection": "daythree_demo_public",
+    "client_id": "public_reference",
+    "query": "How quickly should a customer receive a call-back?",
+    "expected_keywords": ["48 hours", "call-back"],
+    "notes": "Checks whether the public escalation reference retrieves callback timing."
+  },
+  {
+    "id": "public_internal_review",
+    "dataset": "public_complaint_management",
+    "collection": "daythree_demo_public",
+    "client_id": "public_reference",
+    "query": "What can a complainant request if they are dissatisfied with the complaint outcome?",
+    "expected_keywords": ["internal review", "20 days"],
+    "notes": "Checks whether the public complaint procedure retrieves internal review rights."
+  },
+  {
+    "id": "public_complaint_register",
+    "dataset": "public_complaint_management",
+    "collection": "daythree_demo_public",
+    "client_id": "public_reference",
+    "query": "What records should complaints officers maintain?",
+    "expected_keywords": ["complaint", "register"],
+    "notes": "Checks whether the public complaint procedure retrieves register/record keeping obligations."
+  },
+  {
+    "id": "client_a_refund_escalation_docx",
+    "dataset": "client_a_docx_sop",
+    "collection": "daythree_demo_docx",
+    "client_id": "client_a",
+    "query": "When must a refund be escalated?",
+    "expected_keywords": ["RM500", "supervisor"],
+    "notes": "Checks whether DOCX input normalizes into the same retrieval flow."
+  }
+]

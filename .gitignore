@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+!.env.example
+
+# Build and packaging
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local data and generated artifacts
+data/raw/*
+data/processed/*
+data/samples/*
+Backupfolder/
+KB Articles/
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/samples/.gitkeep
+!data/samples/evaluation_queries.json
+
+# Vector databases and model caches
+chroma/
+chroma_db/
+qdrant_storage/
+faiss_index/
+models/
+model_cache/
+.cache/
+
+# Logs and local outputs
+logs/
+*.log
+outputs/
+tmp/
+temp/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Local agent/tooling metadata
+.agents/
+.codex/
