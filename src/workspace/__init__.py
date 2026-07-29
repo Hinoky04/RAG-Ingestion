@@ -1,1 +1,1 @@
-"""Workspace backends for ingestion state and artifact tracking."""
+"""PostgreSQL-backed ingestion state and artifact tracking."""

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
-from src.indexing.chroma_store import ChromaChunkStore, DEFAULT_CHROMA_DIR
+from src.indexing.chroma_store import ChromaChunkStore, DEFAULT_CHROMA_DIR, DEFAULT_COLLECTION_NAME
 from src.indexing.embedder import DEFAULT_MODEL_NAME, LocalEmbedder
 from src.pipeline.index_service import index_document_chunks
 from src.representation.schemas import DocumentChunk
@@ -68,7 +68,7 @@ def index_chunks(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Embed chunks and store them in ChromaDB.")
     parser.add_argument("--chunk-dir", default=str(DEFAULT_CHUNK_DIR), help="Folder containing chunk JSON files.")
-    parser.add_argument("--collection", default="daythree_demo", help="ChromaDB collection name.")
+    parser.add_argument("--collection", default=DEFAULT_COLLECTION_NAME, help="ChromaDB collection name.")
     parser.add_argument("--persist-dir", default=str(DEFAULT_CHROMA_DIR), help="ChromaDB persistence folder.")
     parser.add_argument("--model", default=DEFAULT_MODEL_NAME, help="sentence-transformers model name.")
     parser.add_argument("--reset-collection", action="store_true", help="Delete the collection before indexing.")

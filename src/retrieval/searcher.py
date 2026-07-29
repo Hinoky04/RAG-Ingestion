@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-from src.indexing.chroma_store import DEFAULT_CHROMA_DIR, ChromaChunkStore
+from src.indexing.chroma_store import DEFAULT_CHROMA_DIR, DEFAULT_COLLECTION_NAME, ChromaChunkStore
 from src.indexing.embedder import DEFAULT_MODEL_NAME, LocalEmbedder
 from src.representation.schemas import RetrievalResult
 
@@ -20,10 +20,8 @@ def quiet_noisy_loggers() -> None:
     logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 
-def metadata_filter(client_id: str | None = None, document_type: str | None = None) -> dict[str, str] | None:
+def metadata_filter(document_type: str | None = None) -> dict[str, str] | None:
     filters: dict[str, str] = {}
-    if client_id:
-        filters["client_id"] = client_id
     if document_type:
         filters["document_type"] = document_type
     return filters or None
@@ -41,13 +39,45 @@ def distance_to_score(distance: float | None) -> float:
     return 1 / (1 + distance)
 
 
+def section_group_key(section_path: str) -> str:
+    normalized = " ".join(section_path.split()).casefold()
+    normalized = normalized.split(" 路 ", 1)[0]
+    normalized = normalized.split(" · ", 1)[0]
+    normalized = normalized.split(" (part ", 1)[0]
+    return normalized
+
+
+def diversify_results(results: list[RetrievalResult], top_k: int) -> list[RetrievalResult]:
+    if len(results) <= 1:
+        return results
+
+    selected: list[RetrievalResult] = []
+    section_hits: dict[tuple[str, str], int] = {}
+
+    for result in sorted(results, key=lambda item: item.score, reverse=True):
+        key = (result.document_id, section_group_key(result.section_path))
+        seen = section_hits.get(key, 0)
+        adjusted = result.model_copy(update={"score": max(0.0, result.score - (0.05 * seen))})
+
+        insert_at = len(selected)
+        for index, existing in enumerate(selected):
+            if adjusted.score > existing.score:
+                insert_at = index
+                break
+        selected.insert(insert_at, adjusted)
+        section_hits[key] = seen + 1
+        if len(selected) > top_k * 2:
+            selected = selected[: top_k * 2]
+
+    return selected[:top_k]
+
+
 def search(
     query: str,
     collection_name: str,
     persist_dir: str | Path = DEFAULT_CHROMA_DIR,
     model_name: str = DEFAULT_MODEL_NAME,
     top_k: int = 5,
-    client_id: str | None = None,
     document_type: str | None = None,
 ) -> list[RetrievalResult]:
     embedder = LocalEmbedder(model_name=model_name)
@@ -56,8 +86,8 @@ def search(
     store = ChromaChunkStore(persist_dir=persist_dir, collection_name=collection_name)
     results = store.collection.query(
         query_embeddings=[query_embedding],
-        n_results=top_k,
-        where=metadata_filter(client_id=client_id, document_type=document_type),
+        n_results=max(top_k * 3, top_k),
+        where=metadata_filter(document_type=document_type),
         include=["documents", "metadatas", "distances"],
     )
 
@@ -78,19 +108,17 @@ def search(
                 score=distance_to_score(distance),
                 text=text,
                 document_id=str(metadata.get("document_id", "unknown")),
-                client_id=str(metadata.get("client_id", "unknown")),
                 source_path=str(metadata.get("source_path", "")),
                 file_name=str(metadata.get("file_name", "")),
                 section_path=str(metadata.get("section_path", "Unknown Section")),
                 page_start=metadata.get("page_start"),
                 page_end=metadata.get("page_end"),
                 version=str(metadata.get("version", "v1")),
-                access_scope=str(metadata.get("access_scope", "internal")),
                 metadata=dict(metadata),
             )
         )
 
-    return output
+    return diversify_results(output, top_k)
 
 
 def print_results(results: list[RetrievalResult]) -> None:
@@ -101,7 +129,6 @@ def print_results(results: list[RetrievalResult]) -> None:
     for index, result in enumerate(results, start=1):
         print(f"\nResult {index}")
         print(f"Score: {result.score:.4f}")
-        print(f"Client: {result.client_id}")
         print(f"Source: {result.file_name}")
         print(f"Citation: {result.citation}")
         print(f"Section: {result.section_path}")
@@ -112,11 +139,10 @@ def print_results(results: list[RetrievalResult]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Search indexed chunks with citation metadata.")
     parser.add_argument("query", help="Natural-language query.")
-    parser.add_argument("--collection", default="daythree_demo_clean", help="ChromaDB collection name.")
+    parser.add_argument("--collection", default=DEFAULT_COLLECTION_NAME, help="ChromaDB collection name.")
     parser.add_argument("--persist-dir", default=str(DEFAULT_CHROMA_DIR), help="ChromaDB persistence folder.")
     parser.add_argument("--model", default=DEFAULT_MODEL_NAME, help="sentence-transformers model name.")
     parser.add_argument("--top-k", type=int, default=5, help="Number of results to return.")
-    parser.add_argument("--client-id", default=None, help="Optional client_id filter.")
     parser.add_argument("--document-type", default=None, help="Optional document_type filter.")
     return parser.parse_args()
 
@@ -130,7 +156,6 @@ def main() -> None:
         persist_dir=args.persist_dir,
         model_name=args.model,
         top_k=args.top_k,
-        client_id=args.client_id,
         document_type=args.document_type,
     )
     print_results(results)

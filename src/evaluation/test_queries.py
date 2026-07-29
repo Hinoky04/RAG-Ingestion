@@ -11,7 +11,7 @@ from src.indexing.embedder import DEFAULT_MODEL_NAME
 from src.retrieval.searcher import search
 
 
-DEFAULT_QUERY_FILE = Path("data/samples/evaluation_queries.json")
+DEFAULT_QUERY_FILE = Path("data/samples/evaluation_queries.local.json")
 DEFAULT_TOP_K = 3
 
 
@@ -26,9 +26,7 @@ def quiet_noisy_loggers() -> None:
 @dataclass
 class EvaluationCase:
     id: str
-    dataset: str
     collection: str
-    client_id: str
     query: str
     expected_keywords: list[str]
     notes: str = ""
@@ -63,7 +61,6 @@ def evaluate_case(
         persist_dir=persist_dir,
         model_name=model_name,
         top_k=top_k,
-        client_id=case.client_id,
     )
 
     combined_text = "\n".join(result.text for result in results)

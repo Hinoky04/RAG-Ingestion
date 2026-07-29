@@ -34,7 +34,7 @@ KB Articles/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/samples/.gitkeep
-!data/samples/evaluation_queries.json
+!data/samples/evaluation_queries.example.json
 
 # Vector databases and model caches
 chroma/

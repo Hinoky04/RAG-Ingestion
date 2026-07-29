@@ -17,7 +17,6 @@ def ingest_documents(
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
     markdown_dir: str | Path | None = DEFAULT_MARKDOWN_DIR,
     chunk_dir: str | Path | None = DEFAULT_CHUNK_DIR,
-    pdf_parser: str = "pymupdf",
 ) -> list[Path]:
     records = load_registry(registry_path)
     written_files: list[Path] = []
@@ -29,7 +28,6 @@ def ingest_documents(
                 output_dir=output_dir,
                 markdown_dir=markdown_dir,
                 chunk_dir=chunk_dir,
-                pdf_parser=pdf_parser,
             )
         except ValueError as exc:
             print(f"Skipping {record.file_name}: {exc}")

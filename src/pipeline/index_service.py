@@ -24,4 +24,8 @@ def index_document_chunks(
         collection_name=collection_name,
         reset_collection=reset_collection,
     )
+    # Chunk IDs change after a re-parse. Remove prior vectors so retrieval
+    # cannot return stale text from an older document version.
+    for document_id in {chunk.document_id for chunk in chunks}:
+        store.delete_document_chunks(document_id)
     return store.upsert_chunks(chunks, embeddings, model_name=model_name)

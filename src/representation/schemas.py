@@ -17,15 +17,6 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid4().hex[:12]}"
 
 
-class DocumentStatus(str, Enum):
-    """Simple lifecycle states for local ingestion."""
-
-    ACTIVE = "active"
-    CHANGED = "changed"
-    UNSUPPORTED = "unsupported"
-    FAILED = "failed"
-
-
 class BlockType(str, Enum):
     """Basic content types recovered by parsers."""
 
@@ -45,11 +36,8 @@ class DocumentRecord(BaseModel):
     file_name: str
     file_type: str
     checksum: str
-    client_id: str = "unknown"
     document_type: str = "unknown"
     version: str = "v1"
-    access_scope: str = "internal"
-    status: DocumentStatus = DocumentStatus.ACTIVE
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)
 
@@ -86,12 +74,10 @@ class CanonicalDocument(BaseModel):
     """Clean, normalized document representation used by later pipeline steps."""
 
     document_id: str
-    client_id: str = "unknown"
     document_type: str = "unknown"
     source_path: str
     file_name: str
     version: str = "v1"
-    access_scope: str = "internal"
     blocks: list[ParsedBlock] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=now_utc)
@@ -102,7 +88,6 @@ class DocumentChunk(BaseModel):
 
     chunk_id: str = Field(default_factory=lambda: new_id("chunk"))
     document_id: str
-    client_id: str = "unknown"
     document_type: str = "unknown"
     source_path: str
     file_name: str
@@ -112,7 +97,6 @@ class DocumentChunk(BaseModel):
     text: str
     source_block_ids: list[str] = Field(default_factory=list)
     version: str = "v1"
-    access_scope: str = "internal"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("text")
@@ -140,14 +124,12 @@ class RetrievalResult(BaseModel):
     score: float
     text: str
     document_id: str
-    client_id: str = "unknown"
     source_path: str
     file_name: str
     section_path: str = "Unknown Section"
     page_start: int | None = None
     page_end: int | None = None
     version: str = "v1"
-    access_scope: str = "internal"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property

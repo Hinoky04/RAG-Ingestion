@@ -31,10 +31,9 @@ def ingest_record(
     output_dir: str | Path,
     markdown_dir: str | Path | None,
     chunk_dir: str | Path | None,
-    pdf_parser: str = "pymupdf",
     parser: BaseParser | None = None,
 ) -> IngestionOutcome:
-    selected_parser = parser or parser_for(record, pdf_parser=pdf_parser)
+    selected_parser = parser or parser_for(record)
     if selected_parser is None:
         raise ValueError(f"Unsupported file type: {record.file_type}")
 

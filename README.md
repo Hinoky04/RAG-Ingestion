@@ -1,181 +1,84 @@
-# Research Intern RAG Ingestion MVP
+# RAG Ingestion
 
-A local-first RAG ingestion MVP focused on one realistic goal:
-
-```text
-upload knowledge documents
--> parse them
--> clean and chunk them
--> track document state and artifacts in PostgreSQL
--> index validated chunks into ChromaDB
--> verify retrieval returns the correct chunks
-```
-
-This repository is intentionally not presented as a full production chatbot.
-The current scope is document ingestion, control-plane tracking, vector indexing, and retrieval verification.
-
-## Project Goal
-
-This project is designed to be a credible research intern deliverable for Daythree.
-The main value is a clean and inspectable ingestion pipeline for KB-style documents, not a fake end-to-end enterprise AI product.
-
-## Current Scope
-
-- PDF ingestion with PyMuPDF
-- DOCX ingestion with python-docx
-- Conservative cleaning and chunking
-- PostgreSQL document lifecycle tracking
-- ChromaDB indexing
-- Retrieval verification with citations
-- Streamlit workspace for upload, inspection, validation, and indexing
-
-## Why This Scope
-
-The realistic target is to prove that the ingestion pipeline works well:
-
-- files can be registered
-- parser output can be inspected
-- chunks can be traced back to source documents
-- validated chunks can be indexed
-- retrieval can be checked against expected knowledge
-
-That is a strong intern-scope milestone on its own.
-
-## Active Pipeline
+A local-first research project that proves a traceable PDF/DOCX ingestion pipeline.
 
 ```text
-PDF / DOCX
--> source registration
--> parsing
--> conservative cleaning
--> canonical JSON
--> Markdown preview
--> chunking
--> automated validation
--> PostgreSQL tracking
--> ChromaDB indexing
--> retrieval verification
+PDF / DOCX -> parse -> clean -> chunk -> PostgreSQL tracking -> ChromaDB -> retrieval verification
 ```
 
-## Tech Stack
+The project is intentionally scoped to ingestion and retrieval evidence. It is not presented as a finished chatbot or enterprise RAG platform.
 
-- Python 3.11
-- PyMuPDF
-- python-docx
-- Pydantic
-- PostgreSQL with `psycopg[binary]`
-- Sentence Transformers
-- `BAAI/bge-small-en-v1.5`
-- ChromaDB
-- Streamlit
+## What It Demonstrates
 
-## Repository Structure
+- PDF parsing with PyMuPDF and DOCX parsing with python-docx
+- Canonical document JSON, Markdown previews, and retrieval chunks
+- PostgreSQL lifecycle tracking for documents, checksum versions, artifacts, chunks, and validation runs
+- ChromaDB indexing with source metadata and citations
+- Re-index safety: old vectors for a re-parsed document are removed before current chunks are inserted
+- Streamlit UI for upload, inspection, indexing, and retrieval checks
 
-```text
-src/
-  registry/          source registration and checksum logic
-  parsers/           active PDF and DOCX parsers
-  processing/        cleaning and chunking
-  representation/    canonical schemas and Markdown builder
-  indexing/          embeddings and ChromaDB storage
-  retrieval/         retrieval with citation metadata
-  pipeline/          ingestion and indexing services / CLIs
-  workspace/         PostgreSQL-backed control plane
+## Quick Start
 
-docs/
-  progress_tracking.md
-  known_limitations_and_fallbacks.md
-  postgresql_schema.md
-  demo_walkthrough.md
-  project_positioning.md
-
-streamlit_app.py     local ingestion workspace UI
-```
-
-## Setup
-
-Create a virtual environment and install dependencies:
+Requirements: Python 3.11+ and a running PostgreSQL database. Input files stay local and the pipeline preserves their original filenames.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-Set local model cache variables:
-
-```powershell
-$env:HF_HOME=".cache/huggingface"
-$env:TRANSFORMERS_OFFLINE="1"
-$env:HF_HUB_OFFLINE="1"
-```
-
-Set the PostgreSQL connection string:
-
-```powershell
-$env:WORKSPACE_DATABASE_URL="postgresql://user:password@localhost:5432/rag_workspace"
-```
-
-## Example Commands
-
-Register PDF files:
-
-```powershell
-python -m src.registry.source_registry --raw-dir "data/raw/client_a/sop" --output "data/processed/registry_client_a_pdf.json" --extensions pdf
-```
-
-Parse, clean, preview, and chunk:
-
-```powershell
-python -m src.pipeline.ingest_pipeline --registry "data/processed/registry_client_a_pdf.json" --output-dir "data/processed/documents_cleaned" --markdown-dir "data/processed/markdown_cleaned" --chunk-dir "data/processed/chunks_cleaned"
-```
-
-Index chunks:
-
-```powershell
-python -m src.pipeline.index_pipeline --chunk-dir "data/processed/chunks_cleaned" --collection "daythree_demo_clean" --persist-dir "data/processed/chroma"
-```
-
-Run retrieval:
-
-```powershell
-python -m src.retrieval.searcher "When must Client A refund be escalated?" --collection "daythree_demo_clean" --persist-dir "data/processed/chroma" --top-k 3
-```
-
-Launch the Streamlit workspace:
-
-```powershell
+$env:WORKSPACE_DATABASE_URL="postgresql://user:password@localhost:5432/rag_ingestion"
 streamlit run streamlit_app.py
 ```
 
-## What Is Implemented
+### Local Embedding Model Bootstrap
 
-- PDF source registration with checksum tracking
-- PDF parsing with heading/list/table heuristics
-- DOCX parsing for paragraphs, headings, lists, and simple tables
-- Conservative text cleaning
-- Canonical JSON generation
-- Markdown preview generation
-- Defensive chunking
-- Local embedding generation
-- Persistent ChromaDB indexing
-- Retrieval with citation metadata
-- PostgreSQL tracking for documents, artifacts, chunks, runs, and validation events
-- Streamlit ingestion workspace
+Indexing and retrieval use `BAAI/bge-small-en-v1.5`. The application is intentionally configured with `local_files_only=True`, so it never downloads a model while a document is being indexed. Run this once with an internet connection after installing dependencies:
 
-## What Is Not Implemented Yet
+```powershell
+.\.venv\Scripts\python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='BAAI/bge-small-en-v1.5', cache_dir='.cache/huggingface')"
+```
 
-- Final answer generation
-- OCR for scanned PDFs
-- Semantic validation of business correctness
-- Full permission enforcement
-- Production deployment hardening
+The model is then cached under `.cache/huggingface/` and all normal indexing and retrieval runs use that local copy. The cache is local-only and should not be committed.
 
-## Key Documents
+## Demo Flow
 
-- [docs/project_positioning.md](docs/project_positioning.md)
-- [docs/demo_walkthrough.md](docs/demo_walkthrough.md)
-- [docs/postgresql_schema.md](docs/postgresql_schema.md)
-- [docs/progress_tracking.md](docs/progress_tracking.md)
-- [docs/known_limitations_and_fallbacks.md](docs/known_limitations_and_fallbacks.md)
-- [docs/acceptance_checklist.md](docs/acceptance_checklist.md)
+1. Upload a PDF or DOCX.
+2. Inspect its status, canonical JSON, Markdown preview, and chunks.
+3. Index the validated chunks into the `rag_ingestion` collection.
+4. Ask a question whose answer appears in the uploaded document.
+5. Verify the returned chunk and citation.
+
+For the full live demo sequence, see [docs/demo.md](docs/demo.md).
+
+## Command-Line Flow
+
+```powershell
+python -m src.registry.source_registry --raw-dir "data/raw" --output "data/processed/registry.json"
+python -m src.pipeline.ingest_pipeline --registry "data/processed/registry.json"
+python -m src.pipeline.index_pipeline --chunk-dir "data/processed/chunks" --collection "rag_ingestion"
+python -m src.retrieval.searcher "Ask a document-specific question" --collection "rag_ingestion"
+```
+
+To run a local retrieval smoke test, copy `data/samples/evaluation_queries.example.json` to `data/samples/evaluation_queries.local.json`, replace the placeholder with questions and expected terms from your local documents, then run:
+
+```powershell
+python -m src.evaluation.test_queries
+```
+
+## Repository Layout
+
+```text
+src/
+  parsers/        PDF and DOCX parsing
+  processing/     cleaning and chunking
+  representation/ canonical schemas and Markdown preview
+  pipeline/       ingestion and indexing orchestration
+  workspace/      PostgreSQL document lifecycle tracking
+  indexing/       local embeddings and ChromaDB storage
+  retrieval/      citation-aware vector search
+db/schema.sql     PostgreSQL schema
+docs/             architecture, demo, and limitations
+```
+
+## Limits
+
+This MVP does not include OCR, answer generation, permissions, or production deployment. See [docs/limitations.md](docs/limitations.md) for the exact boundary and [docs/architecture.md](docs/architecture.md) for storage design.

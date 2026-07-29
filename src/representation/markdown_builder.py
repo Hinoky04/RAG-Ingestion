@@ -10,7 +10,9 @@ def block_to_markdown(block: ParsedBlock) -> str:
         return f"{'#' * level} {block.text}"
 
     if block.block_type == BlockType.TABLE:
-        return block.text
+        # Tables may contain merged or nested DOCX cells. Preserve each parsed
+        # row verbatim rather than letting Markdown collapse it into a paragraph.
+        return f"```text\n{block.text}\n```"
 
     if block.block_type == BlockType.LIST_ITEM:
         return f"- {block.text.lstrip('- ').strip()}"
@@ -25,7 +27,6 @@ def build_markdown(document: CanonicalDocument) -> str:
         f"# {document.file_name}",
         "",
         f"- Document ID: `{document.document_id}`",
-        f"- Client: `{document.client_id}`",
         f"- Type: `{document.document_type}`",
         f"- Source: `{document.source_path}`",
         "",

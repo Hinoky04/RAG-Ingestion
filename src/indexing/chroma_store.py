@@ -11,6 +11,7 @@ from src.representation.schemas import DocumentChunk
 
 
 DEFAULT_CHROMA_DIR = Path("data/processed/chroma")
+DEFAULT_COLLECTION_NAME = "rag_ingestion"
 
 
 def clean_metadata(metadata: dict[str, Any]) -> dict[str, str | int | float | bool | None]:
@@ -30,7 +31,6 @@ def clean_metadata(metadata: dict[str, Any]) -> dict[str, str | int | float | bo
 def chunk_metadata(chunk: DocumentChunk, model_name: str) -> dict[str, str | int | float | bool | None]:
     metadata = {
         "document_id": chunk.document_id,
-        "client_id": chunk.client_id,
         "document_type": chunk.document_type,
         "source_path": chunk.source_path,
         "file_name": chunk.file_name,
@@ -38,7 +38,6 @@ def chunk_metadata(chunk: DocumentChunk, model_name: str) -> dict[str, str | int
         "page_start": chunk.page_start,
         "page_end": chunk.page_end,
         "version": chunk.version,
-        "access_scope": chunk.access_scope,
         "citation": chunk.citation,
         "embedding_model": model_name,
     }
@@ -52,7 +51,7 @@ class ChromaChunkStore:
     def __init__(
         self,
         persist_dir: str | Path = DEFAULT_CHROMA_DIR,
-        collection_name: str = "daythree_demo",
+        collection_name: str = DEFAULT_COLLECTION_NAME,
         reset_collection: bool = False,
     ) -> None:
         self.persist_dir = Path(persist_dir)
@@ -90,3 +89,7 @@ class ChromaChunkStore:
 
     def count(self) -> int:
         return self.collection.count()
+
+    def delete_document_chunks(self, document_id: str) -> None:
+        """Remove prior vectors before re-indexing a document."""
+        self.collection.delete(where={"document_id": document_id})

@@ -49,7 +49,7 @@ def save_chunks(chunks: list[DocumentChunk], document_id: str, output_dir: str |
     return output_path
 
 
-def parser_for(record: DocumentRecord, pdf_parser: str = "pymupdf") -> BaseParser | None:
+def parser_for(record: DocumentRecord) -> BaseParser | None:
     if record.file_type.lower() == "pdf":
         return PDFParser()
     if record.file_type.lower() == "docx":

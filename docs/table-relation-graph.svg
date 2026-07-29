@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="980" viewBox="0 0 1400 980" role="img" aria-labelledby="title desc">
+  <title id="title">Table Relation Graph</title>
+  <desc id="desc">Diagram of how the current RAG pipeline preserves table relationships from DOCX and PDF into chunks and retrieval citations.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f6f8fc; }
+      .panel { fill: #ffffff; stroke: #d7deea; stroke-width: 2; rx: 18; ry: 18; }
+      .source { fill: #eef4ff; stroke: #8aa9e6; }
+      .docx { fill: #edf8f0; stroke: #7cb58f; }
+      .pdf { fill: #fff4ea; stroke: #d9a26b; }
+      .chunk { fill: #f4f0ff; stroke: #9a86d9; }
+      .db { fill: #eef7f7; stroke: #6daaaa; }
+      .title { font: 700 32px 'Segoe UI', Arial, sans-serif; fill: #1f2a44; }
+      .subtitle { font: 400 16px 'Segoe UI', Arial, sans-serif; fill: #5d6b86; }
+      .heading { font: 700 20px 'Segoe UI', Arial, sans-serif; fill: #24324d; }
+      .body { font: 400 15px 'Segoe UI', Arial, sans-serif; fill: #33415c; }
+      .small { font: 400 13px 'Segoe UI', Arial, sans-serif; fill: #5d6b86; }
+      .mono { font: 400 14px Consolas, 'Courier New', monospace; fill: #31405b; }
+      .arrow { stroke: #6d7f9b; stroke-width: 3; fill: none; marker-end: url(#m); }
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#6d7f9b"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="980"/>
+
+  <text class="title" x="60" y="72">Current Table Relation Graph</text>
+  <text class="subtitle" x="60" y="104">How the local-first RAG MVP keeps row / column relationships from source tables into retrieval chunks.</text>
+
+  <rect class="panel source" x="60" y="150" width="250" height="150" rx="18" ry="18"/>
+  <text class="heading" x="84" y="190">Source files</text>
+  <text class="body" x="84" y="225">PDF / DOCX upload</text>
+  <text class="body" x="84" y="252">Original filename preserved</text>
+  <text class="body" x="84" y="279">Checksum used for duplicate gate</text>
+
+  <rect class="panel docx" x="380" y="150" width="430" height="300" rx="18" ry="18"/>
+  <text class="heading" x="404" y="190">DOCX parser path</text>
+  <text class="body" x="404" y="225">`python-docx` reads paragraph / table XML order</text>
+  <text class="body" x="404" y="252">Nested tables become `table_structures` metadata</text>
+  <text class="body" x="404" y="279">Hyperlinks go to both text and metadata</text>
+  <text class="body" x="404" y="318">Relation signal preserved:</text>
+  <text class="body" x="430" y="347">• row headers</text>
+  <text class="body" x="430" y="374">• column headers</text>
+  <text class="body" x="430" y="401">• section title above the table</text>
+  <text class="body" x="430" y="428">• nested table boundaries</text>
+
+  <rect class="panel pdf" x="860" y="150" width="480" height="300" rx="18" ry="18"/>
+  <text class="heading" x="884" y="190">PDF parser path</text>
+  <text class="body" x="884" y="225">PyMuPDF extracts positioned text fragments</text>
+  <text class="body" x="884" y="252">Heuristics rebuild partial row order</text>
+  <text class="body" x="884" y="279">Sidebar / margin noise is filtered</text>
+  <text class="body" x="884" y="318">Relation signal is weaker because PDF usually has:</text>
+  <text class="body" x="910" y="347">• page coordinates, not real cells</text>
+  <text class="body" x="910" y="374">• no guaranteed row / column semantics</text>
+  <text class="body" x="910" y="401">• merged visual cells that need guessing</text>
+  <text class="small" x="884" y="435">Result: usable evidence chunks, but not as structurally faithful as DOCX.</text>
+
+  <rect class="panel" x="60" y="520" width="1280" height="180" rx="18" ry="18"/>
+  <text class="heading" x="84" y="560">Chunker decision layer</text>
+  <text class="body" x="84" y="595">1. Heading / page grouping builds section scope.</text>
+  <text class="body" x="84" y="622">2. Structured DOCX tables branch by table shape.</text>
+  <text class="body" x="110" y="649">• Product matrix: split by product column and keep all fields under that product.</text>
+  <text class="body" x="110" y="676">• Generic offer table (`Category | Price | Quota | Validity`): split by row so each pass stays complete.</text>
+  <text class="body" x="650" y="622">3. Large fallback tables stay as overview/table chunks when structure is not reliable.</text>
+  <text class="body" x="650" y="649">4. Chunk text is cleaned, but same-row duplicate cells must stay to avoid losing columns.</text>
+
+  <rect class="panel chunk" x="60" y="760" width="390" height="160" rx="18" ry="18"/>
+  <text class="heading" x="84" y="800">Chunk type A</text>
+  <text class="body" x="84" y="835">Product-level column chunk</text>
+  <text class="mono" x="84" y="868">Item: Premium 5G Home WiFi</text>
+  <text class="mono" x="84" y="892">Monthly Fee: RM149</text>
+
+  <rect class="panel chunk" x="505" y="760" width="390" height="160" rx="18" ry="18"/>
+  <text class="heading" x="529" y="800">Chunk type B</text>
+  <text class="body" x="529" y="835">Offer-level row chunk</text>
+  <text class="mono" x="529" y="868">Item: Weekly | RM15 | Unlimited Internet</text>
+  <text class="mono" x="529" y="892">Validity: 7 Days</text>
+
+  <rect class="panel db" x="950" y="760" width="390" height="160" rx="18" ry="18"/>
+  <text class="heading" x="974" y="800">Stored retrieval unit</text>
+  <text class="body" x="974" y="835">PostgreSQL keeps traceable chunk metadata</text>
+  <text class="body" x="974" y="862">Chroma stores vectors for the approved chunks</text>
+  <text class="body" x="974" y="889">Retrieval returns chunk text + citation</text>
+
+  <path class="arrow" d="M310 225 L380 225"/>
+  <path class="arrow" d="M810 300 L860 300"/>
+  <path class="arrow" d="M595 450 L595 520"/>
+  <path class="arrow" d="M1100 450 L1100 520"/>
+  <path class="arrow" d="M290 700 L255 760"/>
+  <path class="arrow" d="M700 700 L700 760"/>
+  <path class="arrow" d="M1110 700 L1145 760"/>
+
+  <text class="small" x="60" y="955">Repository note: this graph reflects the current implementation in `src/parsers/docx_parser.py`, `src/parsers/pdf_parser.py`, and `src/processing/chunker.py` on July 29, 2026.</text>
+</svg>

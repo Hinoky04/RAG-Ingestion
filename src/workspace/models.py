@@ -18,10 +18,8 @@ class WorkspaceDocument:
     file_name: str
     file_type: str
     checksum: str
-    client_id: str
     document_type: str
     version: str
-    access_scope: str
     status: str
     parser_name: str | None
     parser_version: str | None
@@ -29,19 +27,14 @@ class WorkspaceDocument:
     error_message: str | None
     created_at: datetime
     updated_at: datetime
-    approved_at: datetime | None
     indexed_at: datetime | None
     artifacts: dict[str, str] = field(default_factory=dict)
-    review_status: str | None = None
-    review_notes: str | None = None
-    reviewed_at: datetime | None = None
 
     @property
     def display_id(self) -> str:
         # Keep the database id untouched, but expose a label that is easier to
         # discuss during review and screenshots.
         stem = _slug(self.file_name.rsplit(".", 1)[0])[:36]
-        client = _slug(self.client_id)[:16]
         doc_type = _slug(self.document_type)[:16]
         suffix = self.document_id.split("_")[-1][-4:]
-        return f"doc_{client}_{doc_type}_{stem}_{suffix}"
+        return f"doc_{doc_type}_{stem}_{suffix}"

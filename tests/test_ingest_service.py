@@ -14,12 +14,10 @@ class FakeParser(BaseParser):
     def parse(self, record: DocumentRecord) -> CanonicalDocument:
         return CanonicalDocument(
             document_id=record.document_id,
-            client_id=record.client_id,
             document_type=record.document_type,
             source_path=record.source_path,
             file_name=record.file_name,
             version=record.version,
-            access_scope=record.access_scope,
             blocks=[
                 ParsedBlock(
                     document_id=record.document_id,
@@ -44,11 +42,10 @@ class FakeParser(BaseParser):
 
 def test_ingest_record_writes_all_artifacts(tmp_path):
     record = DocumentRecord(
-        source_path="data/raw/client_a/refund_sop.pdf",
+        source_path="data/raw/kb_articles/refund_sop.pdf",
         file_name="refund_sop.pdf",
         file_type="pdf",
         checksum="abc123",
-        client_id="client_a",
         document_type="sop",
     )
 
@@ -69,5 +66,5 @@ def test_ingest_record_writes_all_artifacts(tmp_path):
     assert len(outcome.chunks) == 1
 
     payload = json.loads(outcome.artifacts.chunk_path.read_text(encoding="utf-8"))
-    assert payload[0]["client_id"] == "client_a"
+    assert payload[0]["document_type"] == "sop"
     assert "RM500" in payload[0]["text"]

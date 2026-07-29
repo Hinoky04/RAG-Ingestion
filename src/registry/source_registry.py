@@ -25,19 +25,12 @@ def path_under_data_raw(path: Path) -> tuple[str, ...]:
     return ()
 
 
-def infer_client_id(path: Path) -> str:
-    """Use the first folder under data/raw as the client or dataset group."""
-
-    relative_parts = path_under_data_raw(path)
-    return relative_parts[0] if len(relative_parts) > 1 else "unknown"
-
-
 def infer_document_type(path: Path) -> str:
     """Use the second folder under data/raw as a simple document type hint."""
 
     relative_parts = path_under_data_raw(path)
-    if len(relative_parts) > 2:
-        return relative_parts[1]
+    if len(relative_parts) > 1:
+        return relative_parts[-2]
     return "unknown"
 
 
@@ -75,7 +68,6 @@ def build_registry(raw_dir: str | Path = DEFAULT_RAW_DIR, extensions: set[str] |
             file_name=file_path.name,
             file_type=file_path.suffix.lower().lstrip("."),
             checksum=calculate_checksum(file_path),
-            client_id=infer_client_id(file_path),
             document_type=infer_document_type(file_path),
         )
         records.append(record)

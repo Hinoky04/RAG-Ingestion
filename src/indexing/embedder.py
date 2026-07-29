@@ -10,7 +10,8 @@ from src.representation.schemas import DocumentChunk
 
 
 DEFAULT_MODEL_NAME = "BAAI/bge-small-en-v1.5"
-DEFAULT_CACHE_DIR = Path(".cache/huggingface/hub")
+# Keep this aligned with HF_HOME and the documented bootstrap command.
+DEFAULT_CACHE_DIR = Path(".cache/huggingface")
 
 
 @dataclass
