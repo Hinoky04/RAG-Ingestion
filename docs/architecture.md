@@ -31,6 +31,6 @@ The schema is in [`db/schema.sql`](../db/schema.sql). The six tables are deliber
 
 Validation confirms that parsing produced blocks, chunks, and expected artifacts. It does not claim that a source document is factually correct or that retrieval quality is production-grade. Retrieval evaluation is keyword-based and must be configured from the local dataset being tested.
 
-## Table Relation Graph
+## Database Relation Graph
 
-See [`docs/table-relations.md`](./table-relations.md) for a visual summary of how the current implementation preserves table row and column relationships from parser output into retrieval chunks.
+See [`docs/database-relations.md`](./database-relations.md) for the PostgreSQL control-plane ER view, including primary keys, foreign keys, and cascade behavior.
