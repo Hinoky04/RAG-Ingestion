@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from src.pipeline.common import (
+from src.pipeline.paths import (
     DEFAULT_CHUNK_DIR,
     DEFAULT_MARKDOWN_DIR,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_REGISTRY,
+)
+from src.pipeline.registry_io import (
     load_registry,
 )
 from src.pipeline.ingest_service import ingest_record

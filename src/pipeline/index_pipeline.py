@@ -1,23 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
-
-from pydantic import TypeAdapter
 
 from src.indexing.chroma_store import ChromaChunkStore, DEFAULT_CHROMA_DIR, DEFAULT_COLLECTION_NAME
 from src.indexing.embedder import DEFAULT_MODEL_NAME, LocalEmbedder
+from src.pipeline.artifacts import load_chunks
 from src.pipeline.index_service import index_document_chunks
-from src.representation.schemas import DocumentChunk
-
-
-DEFAULT_CHUNK_DIR = Path("data/processed/chunks")
-
-
-def load_chunks(path: str | Path) -> list[DocumentChunk]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    return TypeAdapter(list[DocumentChunk]).validate_python(payload)
+from src.pipeline.paths import DEFAULT_CHUNK_DIR
 
 
 def load_chunk_dir(chunk_dir: str | Path) -> list[DocumentChunk]:

@@ -485,21 +485,25 @@ def blocks_to_chunk(
 
 
 def chunk_document(document: CanonicalDocument) -> list[DocumentChunk]:
-    table_structured = sum(block.block_type == BlockType.TABLE for block in document.blocks) >= 2
     is_pdf = Path(document.source_path).suffix.lower() == ".pdf"
+    if is_pdf:
+        # PDF has layout-derived structure, so never apply DOCX table strategies.
+        from src.processing.pdf_chunker import chunk_pdf_document
+
+        return chunk_pdf_document(document)
+
+    table_structured = sum(block.block_type == BlockType.TABLE for block in document.blocks) >= 2
     has_pdf_major_headings = any(
         block.block_type == BlockType.HEADING and block.heading_level == 1 for block in document.blocks
     )
-    if is_pdf and has_pdf_major_headings:
-        drafts = group_pdf_by_major_heading(document)
-    elif heading_count(document) >= MIN_HEADINGS_FOR_STRUCTURE:
+    if heading_count(document) >= MIN_HEADINGS_FOR_STRUCTURE:
         drafts = group_web_by_major_heading(document) if document.document_type == "web" else group_by_heading(document)
     elif table_structured:
         drafts = group_by_table(document)
     else:
         drafts = group_by_page(document)
 
-    if not table_structured and not (is_pdf and has_pdf_major_headings):
+    if not table_structured:
         drafts = merge_tiny_drafts(drafts)
 
     chunks: list[DocumentChunk] = []

@@ -32,7 +32,7 @@ PRICE_ROW_PATTERN = re.compile(r"\bRM\s*\d", re.IGNORECASE)
 
 @dataclass(frozen=True)
 class TableStrategy:
-    """A named, ordered high-confidence table representation policy."""
+    """A named table-chunking strategy."""
 
     name: str
     handler: TableStrategyHandler
@@ -44,7 +44,7 @@ def first_matching_strategy(
     rows: list[list[str]],
     structure_index: int,
 ) -> TableChunkOutput | None:
-    """Return the first strategy that can prove it preserves this table's relations."""
+    """Return the first matching table strategy."""
 
     for strategy in strategies:
         outputs = strategy.handler(draft, rows, structure_index)

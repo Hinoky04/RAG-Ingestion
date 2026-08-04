@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from pathlib import Path
 
 from src.representation.schemas import BlockType, CanonicalDocument, ParsedBlock
 
@@ -83,7 +84,11 @@ def clean_document(document: CanonicalDocument) -> CanonicalDocument:
     keep it. Bad cleaning is harder to debug than mild noise.
     """
 
-    header_candidates = repeated_headers(document.blocks)
+    # PDF parser marks repeated page-margin material with layout evidence.  Do
+    # not remove arbitrary repeated PDF text: tables and policy labels often
+    # repeat legitimate values across pages.
+    is_pdf = Path(document.source_path).suffix.lower() == ".pdf"
+    header_candidates = set() if is_pdf else repeated_headers(document.blocks)
     cleaned_blocks: list[ParsedBlock] = []
 
     for block in document.blocks:

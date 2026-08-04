@@ -1,4 +1,4 @@
-"""Deterministic, dependency-free quality checks for retrieval chunks."""
+"""Quality checks for retrieval chunks."""
 
 from __future__ import annotations
 

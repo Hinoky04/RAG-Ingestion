@@ -4,11 +4,11 @@ import argparse
 import logging
 import textwrap
 from pathlib import Path
-from typing import Any
 
 from src.indexing.chroma_store import DEFAULT_CHROMA_DIR, DEFAULT_COLLECTION_NAME, ChromaChunkStore
 from src.indexing.embedder import DEFAULT_MODEL_NAME, LocalEmbedder
 from src.representation.schemas import RetrievalResult
+from src.retrieval.ranking import distance_to_score, diversify_results, first_or_none, metadata_filter
 
 
 WRAP_WIDTH = 110
@@ -18,58 +18,6 @@ def quiet_noisy_loggers() -> None:
     logging.getLogger("chromadb").setLevel(logging.CRITICAL)
     logging.getLogger("chromadb.telemetry").setLevel(logging.CRITICAL)
     logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
-
-
-def metadata_filter(document_type: str | None = None) -> dict[str, str] | None:
-    filters: dict[str, str] = {}
-    if document_type:
-        filters["document_type"] = document_type
-    return filters or None
-
-
-def first_or_none(values: list[Any] | None, index: int) -> Any:
-    if not values or index >= len(values):
-        return None
-    return values[index]
-
-
-def distance_to_score(distance: float | None) -> float:
-    if distance is None:
-        return 0.0
-    return 1 / (1 + distance)
-
-
-def section_group_key(section_path: str) -> str:
-    normalized = " ".join(section_path.split()).casefold()
-    normalized = normalized.split(" 路 ", 1)[0]
-    normalized = normalized.split(" · ", 1)[0]
-    normalized = normalized.split(" (part ", 1)[0]
-    return normalized
-
-
-def diversify_results(results: list[RetrievalResult], top_k: int) -> list[RetrievalResult]:
-    if len(results) <= 1:
-        return results
-
-    selected: list[RetrievalResult] = []
-    section_hits: dict[tuple[str, str], int] = {}
-
-    for result in sorted(results, key=lambda item: item.score, reverse=True):
-        key = (result.document_id, section_group_key(result.section_path))
-        seen = section_hits.get(key, 0)
-        adjusted = result.model_copy(update={"score": max(0.0, result.score - (0.05 * seen))})
-
-        insert_at = len(selected)
-        for index, existing in enumerate(selected):
-            if adjusted.score > existing.score:
-                insert_at = index
-                break
-        selected.insert(insert_at, adjusted)
-        section_hits[key] = seen + 1
-        if len(selected) > top_k * 2:
-            selected = selected[: top_k * 2]
-
-    return selected[:top_k]
 
 
 def search(

@@ -68,7 +68,7 @@ def build_registry(raw_dir: str | Path = DEFAULT_RAW_DIR, extensions: set[str] |
     records: list[DocumentRecord] = []
 
     for file_path in find_supported_files(raw_path, selected_extensions):
-        # Folder names are not perfect metadata, but they are reliable enough for the current MVP.
+        # Use the parent folder when the source has no explicit document type.
         record = DocumentRecord(
             source_path=display_path(file_path),
             file_name=file_path.name,

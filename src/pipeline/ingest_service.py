@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.parsers.base_parser import BaseParser
-from src.pipeline.common import parser_for, save_chunks, save_document, save_markdown
+from src.pipeline.artifacts import save_chunks, save_document, save_markdown
+from src.pipeline.parser_factory import parser_for
 from src.processing.chunker import chunk_document
 from src.processing.cleaner import clean_document
 from src.processing.quality import ChunkQualityReport, assess_chunks

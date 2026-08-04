@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 
-from src.pipeline.common import parser_for
+from src.pipeline.parser_factory import parser_for
 from src.processing.chunker import chunk_document
 from src.processing.cleaner import clean_document
 from src.processing.quality import assess_chunks, normalized_text

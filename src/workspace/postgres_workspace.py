@@ -19,7 +19,7 @@ SCHEMA_PATH = Path(__file__).parents[2] / "db" / "schema.sql"
 
 
 class PostgreSQLWorkspace:
-    """PostgreSQL control plane for local ingestion runs and artifacts."""
+    """PostgreSQL repository for document records and artifacts."""
 
     def __init__(self, dsn: str) -> None:
         if psycopg is None:
