@@ -26,6 +26,8 @@ STATUS_LABELS = {
     "failed": "Failed",
 }
 
+UPLOAD_VERSION_PATTERN = re.compile(r"^[1-9]\d*(?:\.\d+)?$")
+
 
 def setup_local_model_env() -> None:
     os.environ.setdefault("HF_HOME", ".cache/huggingface")
@@ -91,6 +93,7 @@ def inject_styles() -> None:
         .history-meta { color: var(--muted); font-size: 0.72rem; margin-top: 0.16rem; }
         .history-row { min-height: 64px; padding: 0.4rem 0; }
         .history-row-rule { background: var(--line); height: 1px; margin: 0; }
+        .st-key-document-history-list { border-top: 1px solid var(--line); margin-top: 0.65rem; padding-top: 0.7rem; }
         .history-empty-inline { align-items: center; border-top: 1px solid var(--line); color: var(--muted); display: flex; font-size: 0.9rem; gap: 0.45rem; min-height: 54px; padding: 0.9rem 0; }
         .history-empty-inline strong { color: var(--ink); font-weight: 750; }
         .duplicate-notice { border-left: 3px solid var(--blue); color: var(--muted); font-size: 0.82rem; line-height: 1.5; margin: 0.1rem 0 1rem; padding: 0.55rem 0 0.55rem 0.8rem; }
@@ -103,8 +106,15 @@ def inject_styles() -> None:
         .review-empty-copy { color: var(--muted); font-size: 0.84rem; margin-top: 0.28rem; }
         .st-key-result-review-shell { background: rgba(255, 255, 255, 0.76); border: 1px solid #d7e0ec; border-radius: 12px; box-shadow: 0 1px 2px rgba(20, 33, 61, 0.035); padding: 1.45rem 1.55rem 1.2rem; }
         .st-key-result-review-shell > [data-testid="stVerticalBlockBorderWrapper"] { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
-        .artifact-value { color: var(--ink); font-size: 1rem; font-weight: 800; }
+        .artifact-value { color: var(--blue); font-size: 1.3rem; font-weight: 800; }
         .artifact-label { color: var(--muted); font-size: 0.73rem; margin-top: 0.12rem; }
+        .artifact-meta { color: var(--muted); font-size: 0.8rem; margin: 0.9rem 0 0.7rem; }
+        .artifact-meta strong { color: var(--blue); font-weight: 800; }
+        .artifact-meta-value { color: #35506f; font-family: 'DM Mono', monospace; font-size: 0.82rem; font-weight: 650; }
+        .artifact-location-list { border-top: 1px solid var(--line); margin-top: 0.8rem; padding-top: 0.75rem; }
+        .artifact-location-row { display: grid; gap: 0.2rem; margin-top: 0.55rem; }
+        .artifact-location-label { color: var(--muted); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+        .artifact-location-value { color: #35506f; font-family: 'DM Mono', monospace; font-size: 0.76rem; overflow-wrap: anywhere; }
         .document-meta { color: var(--muted); font-size: 0.78rem; margin-top: 0.38rem; }
         .document-status { display: flex; justify-content: flex-end; padding-top: 0.35rem; }
         .validation-panel { border-left: 3px solid var(--line); margin-bottom: 0.85rem; padding: 0.65rem 0.8rem; }
@@ -121,19 +131,24 @@ def inject_styles() -> None:
         .validation-grid-label { color: var(--ink); font-size: 0.77rem; font-weight: 800; }
         .validation-grid-value { color: var(--muted); font-size: 0.76rem; margin-top: 0.14rem; }
         .validation-grid-rule { background: var(--line); height: 1px; margin: 0.7rem 0; }
-        .chunk-summary { color: var(--muted); font-size: 0.78rem; margin-bottom: 0.55rem; }
+        .chunk-summary { background: var(--blue-soft); border: 1px solid #d8e4fb; border-radius: 999px; color: #48617f; display: inline-flex; font-size: 0.78rem; font-weight: 650; margin-bottom: 0.8rem; padding: 0.38rem 0.68rem; }
         .chunk-evidence { border-bottom: 1px solid var(--line); padding: 0.8rem 0; }
         .chunk-evidence:last-child { border-bottom: 0; }
         .chunk-section { color: var(--ink); font-size: 0.86rem; font-weight: 750; }
         .chunk-id { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.68rem; margin-top: 0.14rem; }
         .chunk-meta { color: var(--muted); font-size: 0.73rem; margin-top: 0.24rem; }
         .chunk-preview { color: var(--ink); font-size: 0.79rem; line-height: 1.55; margin-top: 0.46rem; }
-        .chunk-full-text { background: #f8faff; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-family: 'DM Mono', monospace; font-size: 0.73rem; line-height: 1.55; margin-top: 0.35rem; padding: 0.7rem 0.8rem; white-space: pre-wrap; }
+        .chunk-full-text { background: #f3f6fb; border: 1px solid #d5dfed; border-radius: 8px; color: var(--ink); font-family: 'DM Mono', monospace; font-size: 0.75rem; line-height: 1.6; margin-top: 0.35rem; max-height: 340px; overflow: auto; padding: 0.8rem 0.9rem; white-space: pre-wrap; }
         .chunk-full-text a, .retrieval-text a { color:var(--blue); text-decoration:underline; text-underline-offset:2px; }
-        [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] details { background:#f8faff; border:1px solid #ccd8ea; border-radius:8px; overflow:hidden; }
+        [class*="st-key-chunk-results-"] { background: #fff; border: 1px solid #d5dfed; border-radius: 12px; box-shadow: 0 1px 2px rgba(20,33,61,.035); padding: 0.7rem 0.8rem; }
+        [class*="st-key-chunk-results-"]::-webkit-scrollbar, .chunk-full-text::-webkit-scrollbar { width: 9px; }
+        [class*="st-key-chunk-results-"]::-webkit-scrollbar-thumb, .chunk-full-text::-webkit-scrollbar-thumb { background: #bdcadc; border: 2px solid #f7f9fc; border-radius: 999px; }
+        [class*="st-key-chunk-results-"]::-webkit-scrollbar-track, .chunk-full-text::-webkit-scrollbar-track { background: #f7f9fc; }
+        [class*="st-key-chunk-evidence-"] { background: #fff; border-color: #d8e1ed !important; border-radius: 10px !important; box-shadow: 0 1px 2px rgba(20,33,61,.025); margin-bottom: 0.65rem; }
+        [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] details { background:#f5f8fd; border:1px solid #ccd8ea; border-radius:8px; overflow:hidden; }
         [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] summary { color:var(--ink); font-size:.79rem; font-weight:750; padding:.68rem .82rem; }
-        [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] summary:hover { background:#f2f6fc; }
-        [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] details[open] summary { background:#f2f6fc; border-bottom:1px solid #d8e2f0; }
+        [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] summary:hover { background:#edf3fb; }
+        [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] details[open] summary { background:#edf3fb; border-bottom:1px solid #d8e2f0; }
         .chunk-row-gap { height: 0.85rem; }
         .overview-action-row { align-items: center; display: flex; min-height: 64px; padding: 0.45rem 0; }
         .overview-file { color: var(--ink); font-family: 'DM Mono', monospace; font-size: 0.79rem; font-weight: 500; }
@@ -141,7 +156,7 @@ def inject_styles() -> None:
         .overview-column-heading { color: var(--muted); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
         .overview-column-value { color: var(--ink); font-size: 0.77rem; }
         .overview-row-rule { background: var(--line); height: 1px; margin: 0; }
-        .st-key-overview-recent-list { background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(20,33,61,.035); padding: 0.2rem 1rem 0.6rem; }
+        .st-key-overview-recent-list { background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px rgba(20,33,61,.035); margin-left:-1.25rem; margin-right:-1.25rem; padding: 0.2rem 1rem 0.6rem; width:calc(100% + 2.5rem); }
         .overview-list-header { align-items:center; display:flex; justify-content:space-between; padding:.85rem 0 .55rem; }
         .overview-list-title { color:var(--ink); font-size:1rem; font-weight:800; }
         .st-key-overview-recent-list > [data-testid="stVerticalBlockBorderWrapper"] { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
@@ -164,6 +179,10 @@ def inject_styles() -> None:
         .st-key-nav-overview [data-testid="stBaseButton-primary"], .st-key-nav-upload-history [data-testid="stBaseButton-primary"], .st-key-nav-result-review [data-testid="stBaseButton-primary"], .st-key-nav-retrieval-validation [data-testid="stBaseButton-primary"] { background: transparent !important; border-bottom-color: #ef5b5b !important; color: var(--blue) !important; }
         .top-navigation { border-bottom: 1px solid var(--line); margin-bottom: 0.65rem; }
         [data-testid="stPopover"] > button, [data-testid="stPopover"] button { background: #fff !important; border: 1px solid #cfd9e8 !important; color: var(--ink) !important; }
+        [data-testid="stPopoverBody"], [data-baseweb="popover"] { background: #fff !important; border: 1px solid #d5dfed !important; border-radius: 10px !important; box-shadow: 0 10px 28px rgba(20,33,61,.14) !important; color: var(--ink) !important; }
+        [data-baseweb="popover"] > div, [data-baseweb="popover"] ul, [data-baseweb="popover"] li, [data-baseweb="popover"] [role="option"] { background: #fff !important; color: var(--ink) !important; }
+        [data-testid="stPopoverBody"] *, [data-baseweb="popover"] * { color: var(--ink) !important; }
+        [data-testid="stPopoverBody"] code, [data-baseweb="popover"] code { background: #f3f6fb !important; color: #35506f !important; }
         [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea, [data-baseweb="select"] > div { background: #fff !important; color: var(--ink) !important; border-color: #cfd9e8 !important; }
         [data-testid="stTextInput"] input::placeholder, [data-testid="stTextArea"] textarea::placeholder { color: #8591a5 !important; }
         [data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea { caret-color: var(--ink) !important; }
@@ -172,6 +191,11 @@ def inject_styles() -> None:
         [data-testid="stTextInput"] label p, [data-testid="stTextArea"] label p, [data-testid="stSelectbox"] label p { color: var(--muted) !important; font-weight: 700 !important; }
         [data-testid="stSelectbox"] [data-baseweb="select"] > div { cursor: pointer; transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
         [data-testid="stSelectbox"] [data-baseweb="select"] > div:hover { background: #f8faff !important; border-color: #aebfda !important; }
+        [data-baseweb="menu"], [role="listbox"] { background: #fff !important; border: 1px solid #d5dfed !important; box-shadow: 0 10px 28px rgba(20,33,61,.14) !important; }
+        [data-baseweb="menu"] [role="option"], [role="listbox"] [role="option"] { background: #fff !important; color: var(--ink) !important; }
+        [data-baseweb="menu"] [role="option"] *, [role="listbox"] [role="option"] * { color: var(--ink) !important; }
+        [data-baseweb="menu"] [role="option"]:hover, [data-baseweb="menu"] [aria-selected="true"], [role="listbox"] [role="option"]:hover, [role="listbox"] [aria-selected="true"] { background: #edf3ff !important; }
+        [data-baseweb="popover"] li:hover, [data-baseweb="popover"] [aria-selected="true"] { background: #edf3ff !important; }
         [data-testid="stSelectbox"] svg { color: #7385a2 !important; fill: #7385a2 !important; transition: transform 160ms ease, color 160ms ease; }
         [data-testid="stSelectbox"] [aria-expanded="true"] svg { color: var(--blue) !important; fill: var(--blue) !important; transform: rotate(180deg); }
         [data-testid="stFileUploader"] { background: transparent; border: 0; padding: 0; }
@@ -185,6 +209,14 @@ def inject_styles() -> None:
         [data-testid="stFileUploaderDeleteBtn"]:hover { color: #bf3e45 !important; }
         .upload-version-label { color: var(--ink); font-size: 0.78rem; font-weight: 750; }
         .upload-version-helper { color: var(--muted); font-size: 0.72rem; line-height: 1.45; margin-top: 0.18rem; }
+        .upload-version-error { color: var(--red); font-size: 0.86rem; font-weight: 750; line-height: 1.45; margin-top: 0.45rem; }
+        .st-key-markdown-preview-content { background: #fff; border: 1px solid #d5dfed; border-radius: 12px; box-shadow: 0 1px 2px rgba(20,33,61,.035); margin: 0 0.75rem; padding: 0.7rem 0.85rem; }
+        .st-key-markdown-preview-content h1 { font-size: 1.55rem !important; margin-bottom: 0.8rem !important; overflow-wrap: anywhere; }
+        .st-key-markdown-preview-content li strong { color: var(--blue); font-weight: 800; }
+        .st-key-markdown-preview-content li code { background: transparent !important; border: 0 !important; color: var(--ink) !important; font-family: inherit !important; font-size: inherit !important; padding: 0 !important; }
+        [class*="st-key-chunk-results-"], [class*="st-key-chunk-results-"] [data-testid="stVerticalBlockBorderWrapper"], .st-key-markdown-preview-content [data-testid="stVerticalBlockBorderWrapper"] { overflow-y: scroll !important; scrollbar-gutter: stable; }
+        [class*="st-key-chunk-results-"]::-webkit-scrollbar, .st-key-markdown-preview-content::-webkit-scrollbar { display: block; width: 11px; }
+        [class*="st-key-chunk-results-"]::-webkit-scrollbar-thumb, .st-key-markdown-preview-content::-webkit-scrollbar-thumb { background: #aebfd5; border: 2px solid #f7f9fc; border-radius: 999px; }
         .st-key-upload-intake-card [data-testid="stTextInput"] { margin-top: 0 !important; }
         [class*="st-key-clear-chunk-search-"] button { background: transparent !important; border-color: transparent !important; color: var(--blue) !important; font-size: 0.78rem !important; min-height: auto !important; padding: 0.35rem 0 !important; }
         [class*="st-key-clear-chunk-search-"] button:hover { background: transparent !important; border-color: transparent !important; color: #1748c2 !important; text-decoration: underline; }
@@ -223,7 +255,7 @@ def inject_styles() -> None:
         .history-card-footer { border-top: 1px solid var(--line); margin-top: 0.2rem; padding-top: 0.45rem; }
         .st-key-history-footer-link button { background: transparent !important; border: 0 !important; color: var(--blue) !important; font-size: 0.78rem !important; min-height: auto !important; padding: 0.25rem 0 !important; }
         .st-key-history-footer-link button:hover { background: transparent !important; color: #1748c2 !important; text-decoration: underline; }
-        @media (max-width: 800px) { .block-container { padding: 1rem 1rem 2rem; } }
+        @media (max-width: 800px) { .block-container { padding: 1rem 1rem 2rem; } .st-key-overview-recent-list { margin-left:0; margin-right:0; width:100%; } }
 
         /* Commercial layout additions */
         .page-header { margin-bottom: 1.45rem; }
@@ -233,10 +265,13 @@ def inject_styles() -> None:
         .section-title { color:var(--ink); font-size:1.04rem; font-weight:800; letter-spacing:-.02em; }
         .section-copy { color:var(--muted); font-size:.82rem; margin-top:.25rem; }
         .st-key-upload-intake-card, .st-key-document-history-card, .st-key-document-inspector-card, .st-key-retrieval-query-card { background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 1px 2px rgba(20,33,61,.04); padding:1.25rem 1.35rem; }
+        .st-key-upload-intake-card, .st-key-document-history-card, .st-key-document-inspector-card { margin-left:-1.25rem; margin-right:-1.25rem; width:calc(100% + 2.5rem); }
         .st-key-retrieval-query-card [data-testid="stTextArea"] textarea { height:76px !important; min-height:76px !important; }
-        .retrieval-results-label { color:var(--muted); font-size:.78rem; font-weight:750; height:0; line-height:1; position:relative; top:-1.28rem; }
-        .st-key-markdown-preview-content pre { background:#f8faff !important; border:1px solid var(--line) !important; border-radius:8px !important; color:var(--ink) !important; }
-        .st-key-markdown-preview-content pre code { color:var(--ink) !important; }
+        .retrieval-field-label { color:var(--muted); font-size:.78rem; font-weight:750; margin-bottom:.35rem; }
+        .retrieval-query-error { background: #fff4e5; border: 1px solid #f0c98b; border-left: 4px solid #d98219; border-radius: 9px; color: #7a4909; font-size: 0.86rem; font-weight: 700; margin-top: 1rem; padding: 0.78rem 0.9rem; }
+        .action-success-notice { background: #e2f6e9; border: 1px solid #9fd6b3; border-left: 4px solid #218657; border-radius: 9px; color: #0c5c36; font-size: 0.9rem; font-weight: 800; line-height: 1.5; margin: 0.8rem 0 1rem; padding: 0.78rem 0.9rem; }
+        .st-key-markdown-preview-content pre { background:#f8faff !important; border:1px solid var(--line) !important; border-radius:8px !important; color:var(--ink) !important; max-height:380px; overflow:auto !important; white-space:pre-wrap !important; }
+        .st-key-markdown-preview-content pre code { color:var(--ink) !important; overflow-wrap:anywhere !important; white-space:pre-wrap !important; word-break:break-word !important; }
         .st-key-upload-intake-card [data-testid='stFileUploader'] { box-sizing:border-box !important; margin:0 !important; max-width:900px !important; min-width:0 !important; width:100% !important; }
         .st-key-upload-intake-card [data-testid='stFileUploaderDropzone'] { box-sizing:border-box !important; margin:0 !important; max-width:100% !important; min-width:0 !important; width:auto !important; }
         .st-key-upload-intake-card [data-testid='stFileUploaderDropzone'] > * { min-width:0 !important; }
@@ -254,7 +289,7 @@ def inject_styles() -> None:
         .validation-audit-row { display:grid; grid-template-columns: 180px 1fr; min-height:42px; border-bottom:1px solid var(--line); }
         .validation-audit-row:last-child { border-bottom:0; }
         .validation-audit-label { background:#f8faff; color:var(--muted); font-size:.69rem; font-weight:800; letter-spacing:.05em; padding:.72rem .85rem; text-transform:uppercase; }
-        .validation-audit-value { color:var(--ink); font-size:.8rem; font-weight:650; padding:.72rem .9rem; }
+        .validation-audit-value { color:var(--ink); font-size:.8rem; font-weight:650; overflow-wrap:anywhere; padding:.72rem .9rem; }
         @media (max-width:800px){ .validation-audit-row{grid-template-columns:1fr;} .validation-audit-label{padding-bottom:.25rem;} .validation-audit-value{padding-top:.25rem;} }
         .evidence-card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:1rem 1.05rem; }
         .evidence-card + .evidence-card { margin-top:.8rem; }
@@ -270,11 +305,16 @@ def inject_styles() -> None:
         .retrieval-rank { color:var(--blue); font-size:.68rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
         .retrieval-file { color:var(--ink); font-size:.92rem; font-weight:800; margin-top:.16rem; }
         .retrieval-citation { color:var(--muted); font-size:.72rem; margin-top:.24rem; }
+        [class*="st-key-download-source-retrieval-"] { margin-top:.08rem; }
+        [class*="st-key-download-source-retrieval-"] [data-testid="stDownloadButton"] button { background:transparent !important; border:0 !important; border-radius:0 !important; color:var(--blue) !important; font-size:.92rem !important; font-weight:800 !important; justify-content:flex-start !important; min-height:auto !important; padding:.05rem 0 !important; text-decoration:underline !important; text-underline-offset:2px; }
+        [class*="st-key-download-source-retrieval-"] [data-testid="stDownloadButton"] button:hover { background:transparent !important; color:#1748c2 !important; text-decoration-thickness:2px !important; }
         .score-pill { background:var(--blue-soft); border-radius:999px; color:var(--blue); display:inline-block; font-size:.72rem; font-weight:800; padding:.3rem .58rem; }
         .retrieval-text { color:var(--ink); font-size:.8rem; line-height:1.65; margin-top:.75rem; white-space:pre-wrap; }
         .st-key-markdown-source-code code { max-height:650px; overflow:auto; }
         @media (max-width: 800px) {
             .surface-card, .st-key-upload-intake-card, .st-key-document-history-card, .st-key-document-inspector-card, .st-key-retrieval-query-card { padding:1rem; }
+            .st-key-upload-intake-card, .st-key-document-history-card, .st-key-document-inspector-card { margin-left:0; margin-right:0; width:100%; }
+            .st-key-markdown-preview-content { margin-left:0; margin-right:0; }
             .document-title-row { align-items:flex-start; flex-direction:column; }
         }
         </style>
@@ -304,6 +344,17 @@ def status_badge(status: str) -> str:
     return f'<span class="status status-{status}">{label}</span>'
 
 
+def render_success_notice(message: str) -> None:
+    st.markdown(f"<div class='action-success-notice'>{escape(message)}</div>", unsafe_allow_html=True)
+
+
+def parser_display_name(parser_name: str | None) -> str:
+    """Render parser identity without the stored implementation version."""
+
+    name = (parser_name or "").strip()
+    return re.sub(r"\s+v?\d+(?:\.\d+)*(?:[-+][\w.-]+)?$", "", name, flags=re.IGNORECASE) or "Unavailable"
+
+
 def document_label(document) -> str:
     return f"{document.file_name} | {STATUS_LABELS.get(document.status, document.status)}"
 
@@ -311,15 +362,15 @@ def document_label(document) -> str:
 def metric_card(label: str, value: str | int, note: str) -> None:
     tone = {
         "Documents": "documents",
-        "Manual gate": "ready",
+        "Ready for review": "ready",
         "Indexed": "indexed",
-        "Needs attention": "attention",
+        "Issues": "attention",
     }.get(label, "documents")
     icons = {
         "Documents": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><path d='M6 3h9l3 3v15H6z'/><path d='M15 3v4h4M9 11h6M9 15h6'/></svg>",
-        "Manual gate": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><circle cx='12' cy='12' r='9'/><path d='m8.5 12 2.2 2.2 4.8-5'/></svg>",
+        "Ready for review": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><circle cx='12' cy='12' r='9'/><path d='m8.5 12 2.2 2.2 4.8-5'/></svg>",
         "Indexed": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><ellipse cx='12' cy='5' rx='7' ry='3'/><path d='M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6'/></svg>",
-        "Needs attention": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><path d='M12 3 2.8 19h18.4z'/><path d='M12 9v4M12 16.5h.01'/></svg>",
+        "Issues": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><path d='M12 3 2.8 19h18.4z'/><path d='M12 9v4M12 16.5h.01'/></svg>",
     }
     st.markdown(
         f"<div class='metric-card metric-{tone}'><div class='metric-icon'>{icons[label]}</div>"
@@ -339,7 +390,7 @@ def format_updated(timestamp) -> str:
 
 def overview_action_label(status: str) -> str:
     if status == "indexed":
-        return "View details"
+        return "Open"
     if status == "registered":
         return "View"
     return "Review"
@@ -353,6 +404,23 @@ def overview_chunk_label(status: str, count: int) -> str:
 
 def normalize_search_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip().casefold()
+
+
+def validate_retrieval_query(query: str) -> str | None:
+    cleaned = query.strip()
+    if not cleaned:
+        return "Enter a retrieval question before searching."
+    if len(cleaned) < 5:
+        return "Use a more specific question (at least 5 characters)."
+    if len(cleaned) > 1_000:
+        return "Keep the retrieval question under 1,000 characters."
+    if not re.fullmatch(r"[\w\s.,;:!?()'\"/&%+\-–—，。！？、（）【】「」]+", cleaned):
+        return "Use letters, numbers, spaces, and common punctuation only."
+    contains_cjk = bool(re.search(r"[\u3400-\u9fff]", cleaned))
+    english_terms = re.findall(r"[A-Za-z]{2,}", cleaned)
+    if not contains_cjk and len(english_terms) < 2:
+        return "Use a specific question with at least two words, for example: 'What is the refund policy?'"
+    return None
 
 
 URL_PATTERN = re.compile(r"https?://[^\s<>()\[\]{}\"']+", re.IGNORECASE)
@@ -428,7 +496,7 @@ def render_navigation() -> str:
     if active_page not in page_names:
         active_page = "Overview"
         st.session_state["active_page"] = active_page
-    columns = st.columns([0.82, 1.28, 1.08, 1.38, 3.2], gap="small")
+    columns = st.columns([0.9, 1.35, 1.2, 1.55], gap="small")
     for column, (page, key) in zip(columns, pages):
         column.button(
             page,
@@ -465,13 +533,13 @@ def render_overview(service: WorkspaceService) -> None:
 
     columns = st.columns(4, gap="medium")
     with columns[0]:
-        metric_card("Documents", stats.get("total", 0), "Tracked documents")
+        metric_card("Documents", stats.get("total", 0), "Total tracked documents")
     with columns[1]:
-        metric_card("Manual gate", ready, "Awaiting review or approval")
+        metric_card("Ready for review", ready, "Ready for review or indexing")
     with columns[2]:
         metric_card("Indexed", stats.get("indexed", 0), "Available for retrieval")
     with columns[3]:
-        metric_card("Needs attention", attention, "Warnings or failures")
+        metric_card("Issues", attention, "No warnings or failures" if attention == 0 else "Warnings or failures")
 
     st.markdown("<div style='height:1.45rem'></div>", unsafe_allow_html=True)
     if not documents:
@@ -530,6 +598,9 @@ def render_upload(service: WorkspaceService) -> None:
             accept_multiple_files=False,
             label_visibility="collapsed",
         )
+        if uploaded_file is None:
+            st.session_state.pop("duplicate_document_id", None)
+            st.session_state.pop("duplicate_notice", None)
         st.markdown(
             "<div class='upload-constraints'>Accepted formats: PDF, DOCX &nbsp;·&nbsp; Maximum size: 200MB &nbsp;·&nbsp; Processing stays local</div>",
             unsafe_allow_html=True,
@@ -537,14 +608,30 @@ def render_upload(service: WorkspaceService) -> None:
         version_info, version_input, action_col, _ = st.columns([1.25, 0.75, 1.15, 2.2], gap="small", vertical_alignment="center")
         version_info.markdown(
             "<div class='upload-version-label'>Version</div>"
-            "<div class='upload-version-helper'>Automatically assigned from previous uploads with the same filename.</div>",
+            "<div class='upload-version-helper'>Suggested from previous uploads with the same filename. Use numbers only, for example 1 or 1.1.</div>",
             unsafe_allow_html=True,
         )
-        suggested_version = "v1"
+        suggested_version = "1"
         if uploaded_file is not None:
             suggested_version = service.suggested_version_for_filename(uploaded_file.name)
+        upload_file_name = uploaded_file.name if uploaded_file is not None else None
+        if st.session_state.get("upload-version-input-filename") != upload_file_name:
+            st.session_state["upload-version-input"] = suggested_version
+            st.session_state["upload-version-input-filename"] = upload_file_name
         with version_input:
-            st.text_input("Version", value=suggested_version, label_visibility="collapsed", key="upload-version", disabled=True)
+            upload_version = st.text_input(
+                "Version",
+                label_visibility="collapsed",
+                key="upload-version-input",
+                disabled=uploaded_file is None,
+            )
+        normalized_version = upload_version.strip() or "1"
+        version_is_valid = bool(UPLOAD_VERSION_PATTERN.fullmatch(normalized_version))
+        if not version_is_valid:
+            version_info.markdown(
+                "<div class='upload-version-error'>Use 1 or 1.1 only.</div>",
+                unsafe_allow_html=True,
+            )
         with action_col:
             submit = st.button(
                 "Register and process",
@@ -569,6 +656,8 @@ def render_upload(service: WorkspaceService) -> None:
             )
     if not submit or uploaded_file is None:
         return
+    if not version_is_valid:
+        return
     file_bytes = uploaded_file.getvalue()
     try:
         service.validate_upload(uploaded_file.name, file_bytes)
@@ -585,14 +674,14 @@ def render_upload(service: WorkspaceService) -> None:
         st.session_state.pop("duplicate_document_id", None)
         st.session_state.pop("duplicate_notice", None)
         saved_path = service.save_uploaded_file(uploaded_file.name, file_bytes, "document")
-        record = service.register_path(saved_path, "document", suggested_version)
+        record = service.register_path(saved_path, "document", normalized_version)
         st.session_state["selected_document_id"] = record.document_id
         try:
             service.ingest_document(record.document_id)
         except Exception as exc:
             st.error(f"Document registered, but processing failed: {exc}")
         else:
-            st.success(f"{record.file_name} is parsed and ready for inspection.")
+            st.session_state["document-action-notice"] = f"{record.file_name} is parsed and ready for inspection."
             st.session_state["active_page"] = "Result review"
             st.rerun()
 
@@ -604,7 +693,7 @@ def select_document_for_review(document_id: str) -> None:
 
 def clear_history_filters() -> None:
     st.session_state["history-search"] = ""
-    st.session_state["history-status"] = "All"
+    st.session_state["history-view"] = "By time (newest)"
 
 
 def selected_history_documents(documents) -> list[str]:
@@ -619,15 +708,70 @@ def clear_pending_history_delete() -> None:
     st.session_state.pop("history-delete-pending", None)
 
 
+def clear_history_delete_mode() -> None:
+    st.session_state["history-delete-mode"] = False
+    clear_pending_history_delete()
+
+
+@st.dialog("Delete selected documents?")
+def confirm_history_delete_dialog(service: WorkspaceService, documents, pending_delete_ids: list[str]) -> None:
+    pending_documents = [item for item in documents if item.document_id in pending_delete_ids]
+    pending_names = ", ".join(item.file_name for item in pending_documents) or "selected documents"
+    pending_file_names = {item.file_name for item in pending_documents}
+    st.warning(
+        f"This permanently removes {len(pending_delete_ids)} document(s), their workspace artifacts, and indexed vectors."
+    )
+    st.caption(pending_names)
+    confirm_col, cancel_col = st.columns(2)
+    if confirm_col.button("Delete permanently", key="history-confirm-delete", type="primary", use_container_width=True):
+        failures: list[str] = []
+        for document_id in pending_delete_ids:
+            try:
+                service.delete_document(document_id, DEFAULT_CHROMA_DIR)
+            except Exception as exc:
+                failures.append(f"{document_id}: {exc}")
+                continue
+            st.session_state.pop(f"history-delete-{document_id}", None)
+            if st.session_state.get("selected_document_id") == document_id:
+                st.session_state.pop("selected_document_id", None)
+        if failures:
+            st.error("Delete failed for: " + " | ".join(failures))
+            return
+        if st.session_state.get("upload-version-input-filename") in pending_file_names:
+            st.session_state.pop("upload-version-input", None)
+            st.session_state.pop("upload-version-input-filename", None)
+        clear_history_delete_mode()
+        st.session_state["history-action-notice"] = f"Deleted {len(pending_delete_ids)} document(s) from the workspace."
+        st.rerun()
+    if cancel_col.button("Cancel", key="history-cancel-delete", use_container_width=True):
+        clear_pending_history_delete()
+        st.rerun()
+
+
 def render_document_history(service: WorkspaceService) -> None:
     with st.container(border=True, key="document-history-card"):
-        st.markdown(
-            "<div class='eyebrow'>Document history</div>"
-            "<div class='card-title'>Document history</div>"
-            "<div class='card-copy'>Search, filter, review, or manage previously processed documents.</div>",
-            unsafe_allow_html=True,
-        )
         documents = service.workspace.list_documents()
+        title_col, delete_col = st.columns([5, 1.35], vertical_alignment="top")
+        with title_col:
+            st.markdown(
+                "<div class='eyebrow'>Document history</div>"
+                "<div class='card-title'>Document history</div>"
+                "<div class='card-copy'>Search, filter, review, or manage previously processed documents.</div>",
+                unsafe_allow_html=True,
+            )
+        delete_mode = st.session_state.get("history-delete-mode", False)
+        if documents:
+            with delete_col:
+                if delete_mode:
+                    if st.button("Cancel deletion", key="history-cancel-delete-mode", use_container_width=True):
+                        clear_history_delete_mode()
+                        st.rerun()
+                elif st.button("Delete documents", key="history-start-delete", use_container_width=True):
+                    st.session_state["history-delete-mode"] = True
+                    st.rerun()
+        history_notice = st.session_state.pop("history-action-notice", None)
+        if history_notice:
+            render_success_notice(history_notice)
         if not documents:
             st.markdown(
                 "<div class='history-empty-inline'><div><strong>No documents yet</strong><br>"
@@ -642,15 +786,13 @@ def render_document_history(service: WorkspaceService) -> None:
             placeholder="Search by filename",
             key="history-search",
         )
-        filter_options = ["All", "Ready for review", "Approved", "Indexed", "Needs attention", "Failed"]
-        selected_filter = controls[1].selectbox("Status filter", filter_options, key="history-status")
+        view_options = ["By time (newest)", "Alphabetical (A-Z)", "Indexed", "Ready for review", "Failed"]
+        selected_view = controls[1].selectbox("View documents by", view_options, key="history-view")
         status_filter = {
             "Ready for review": "review_ready",
-            "Approved": "approved",
             "Indexed": "indexed",
-            "Needs attention": "low_confidence",
             "Failed": "failed",
-        }.get(selected_filter)
+        }.get(selected_view)
         normalized_query = search_query.strip().lower()
         visible = [
             item
@@ -658,12 +800,16 @@ def render_document_history(service: WorkspaceService) -> None:
             if (status_filter is None or item.status == status_filter)
             and (not normalized_query or normalized_query in item.file_name.lower())
         ]
+        if selected_view == "Alphabetical (A-Z)":
+            visible.sort(key=lambda item: item.file_name.casefold())
+        else:
+            visible.sort(key=lambda item: item.updated_at, reverse=True)
 
         if not visible:
             if normalized_query:
                 message = f"No documents match \"{escape(search_query.strip())}\"."
-            elif selected_filter != "All":
-                message = f"No {selected_filter.lower()} documents found."
+            elif selected_view in {"Indexed", "Ready for review", "Failed"}:
+                message = f"No {selected_view.lower()} documents found."
             else:
                 message = "No documents have been uploaded yet."
             empty_row = st.columns([6, 1], vertical_alignment="center")
@@ -674,89 +820,57 @@ def render_document_history(service: WorkspaceService) -> None:
             empty_row[1].button("Clear filters", key="clear-history-filters", on_click=clear_history_filters)
             return
 
-        header = st.columns([0.55, 2.75, 0.7, 1.2, 1.0, 0.8], vertical_alignment="center")
-        for column, label in zip(header, ["", "File", "Version", "Updated", "Status", "Actions"]):
+        table_columns = [0.55, 2.75, 0.7, 1.2, 1.0, 0.8] if delete_mode else [3.3, 0.7, 1.2, 1.0, 0.8]
+        table_headers = ["", "File", "Version", "Updated", "Status", "Actions"] if delete_mode else ["File", "Version", "Updated", "Status", "Actions"]
+        if delete_mode:
+            selected_ids = selected_history_documents(visible)
+            delete_controls = st.columns([3.6, 1.45], vertical_alignment="center")
+            delete_controls[0].markdown(
+                f"<div class='subtle'>Selected: {len(selected_ids)} document(s).</div>",
+                unsafe_allow_html=True,
+            )
+            if delete_controls[1].button(
+                f"Delete selected ({len(selected_ids)})",
+                key="history-delete-selected",
+                disabled=not selected_ids,
+                type="primary",
+                use_container_width=True,
+            ):
+                confirm_history_delete_dialog(service, documents, selected_ids)
+        header = st.columns(table_columns, vertical_alignment="center")
+        for column, label in zip(header, table_headers):
             column.markdown(f"<div class='history-heading'>{label}</div>", unsafe_allow_html=True)
+        with st.container(height=430, border=False, key="document-history-list"):
+            for index, item in enumerate(visible):
+                count = document_chunk_count(service, item.document_id) if not delete_mode else 0
+                document_summary = overview_chunk_label(item.status, count) if not delete_mode else "Select to delete"
+                row = st.columns(table_columns, vertical_alignment="center")
+                data_columns = row
+                if delete_mode:
+                    row[0].checkbox(
+                        "Select document",
+                        key=f"history-delete-{item.document_id}",
+                        label_visibility="collapsed",
+                    )
+                    data_columns = row[1:]
+                data_columns[0].markdown(
+                    f"<div class='history-row'><div class='history-file'>{escape(item.file_name)}</div>"
+                    f"<div class='history-meta'>{escape(item.file_type.upper())} &middot; "
+                    f"{document_summary}</div></div>",
+                    unsafe_allow_html=True,
+                )
+                data_columns[1].markdown(f"<div class='history-value'>{escape(item.version)}</div>", unsafe_allow_html=True)
+                data_columns[2].markdown(f"<div class='history-value'>{format_updated(item.updated_at)}</div>", unsafe_allow_html=True)
+                data_columns[3].markdown(status_badge(item.status), unsafe_allow_html=True)
+                data_columns[4].button(
+                    "Review",
+                    key=f"review-{item.document_id}",
+                    on_click=select_document_for_review,
+                    args=(item.document_id,),
+                )
+                if index < len(visible) - 1:
+                    st.markdown("<div class='history-row-rule'></div>", unsafe_allow_html=True)
 
-        for index, item in enumerate(visible):
-            count = document_chunk_count(service, item.document_id)
-            row = st.columns([0.55, 2.75, 0.7, 1.2, 1.0, 0.8], vertical_alignment="center")
-            row[0].checkbox(
-                "Select document",
-                key=f"history-delete-{item.document_id}",
-                label_visibility="collapsed",
-            )
-            row[1].markdown(
-                f"<div class='history-row'><div class='history-file'>{escape(item.file_name)}</div>"
-                f"<div class='history-meta'>{escape(item.file_type.upper())} &middot; "
-                f"{overview_chunk_label(item.status, count)}</div></div>",
-                unsafe_allow_html=True,
-            )
-            row[2].markdown(f"<div class='history-value'>{escape(item.version)}</div>", unsafe_allow_html=True)
-            row[3].markdown(f"<div class='history-value'>{format_updated(item.updated_at)}</div>", unsafe_allow_html=True)
-            row[4].markdown(status_badge(item.status), unsafe_allow_html=True)
-            row[5].button(
-                "Review",
-                key=f"review-{item.document_id}",
-                on_click=select_document_for_review,
-                args=(item.document_id,),
-            )
-            if index < len(visible) - 1:
-                st.markdown("<div class='history-row-rule'></div>", unsafe_allow_html=True)
-
-        selected_ids = selected_history_documents(visible)
-        delete_enabled = bool(selected_ids)
-        delete_notice = "Delete removes the document record, workspace artifacts, and any indexed vectors. Raw KB source files are not deleted."
-        st.markdown("<div style='height:.9rem'></div>", unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='duplicate-notice'><strong>Delete from workspace.</strong> "
-            f"{escape(delete_notice)}</div>",
-            unsafe_allow_html=True,
-        )
-        helper_copy = (
-            f"Selected: {len(selected_ids)} document(s)."
-            if delete_enabled
-            else "Select one or more documents to enable delete."
-        )
-        delete_controls = st.columns([1.2, 1.4, 3.4], vertical_alignment="center")
-        delete_controls[2].markdown(f"<div class='subtle'>{escape(helper_copy)}</div>", unsafe_allow_html=True)
-        if delete_controls[0].button(
-            f"Delete selected ({len(selected_ids)})",
-            key="history-delete-selected",
-            disabled=not delete_enabled,
-        ):
-            st.session_state["history-delete-pending"] = selected_ids
-            st.rerun()
-
-        pending_delete_ids = st.session_state.get("history-delete-pending", [])
-        if pending_delete_ids:
-            pending_documents = [item for item in documents if item.document_id in pending_delete_ids]
-            pending_names = ", ".join(item.file_name for item in pending_documents) or "selected documents"
-            st.markdown(
-                f"<div class='duplicate-notice'><strong>Confirm delete.</strong> "
-                f"Delete {len(pending_delete_ids)} document(s): {escape(pending_names)}?</div>",
-                unsafe_allow_html=True,
-            )
-            confirm_controls = st.columns([1.15, 1.15, 3.2], vertical_alignment="center")
-            if confirm_controls[0].button("Confirm delete", key="history-confirm-delete", type="primary"):
-                failures: list[str] = []
-                for document_id in pending_delete_ids:
-                    try:
-                        service.delete_document(document_id, DEFAULT_CHROMA_DIR)
-                    except Exception as exc:
-                        failures.append(f"{document_id}: {exc}")
-                        continue
-                    st.session_state.pop(f"history-delete-{document_id}", None)
-                    if st.session_state.get("selected_document_id") == document_id:
-                        st.session_state.pop("selected_document_id", None)
-
-                clear_pending_history_delete()
-                if failures:
-                    st.error("Delete failed for: " + " | ".join(failures))
-                else:
-                    st.success(f"Deleted {len(pending_delete_ids)} document(s) from the workspace.")
-                    st.rerun()
-            confirm_controls[1].button("Cancel", key="history-cancel-delete", on_click=clear_pending_history_delete)
 
 
 def render_upload_history(service: WorkspaceService) -> None:
@@ -771,17 +885,37 @@ def render_upload_history(service: WorkspaceService) -> None:
     render_document_history(service)
 
 
+@st.dialog("Index validated chunks?")
+def confirm_document_index_dialog(service: WorkspaceService, document_id: str, chunk_count: int) -> None:
+    st.markdown(f"Index **{chunk_count} validated chunks** from this document?")
+    st.caption("Existing vectors for this document will be replaced in ChromaDB.")
+    confirm_col, cancel_col = st.columns(2)
+    if confirm_col.button("Index and replace vectors", key=f"confirm-index-{document_id}", type="primary", use_container_width=True):
+        try:
+            count = service.index_document(document_id, DEFAULT_COLLECTION, DEFAULT_CHROMA_DIR)
+        except Exception as exc:
+            st.error(f"Indexing failed: {exc}")
+            return
+        st.session_state["document-action-notice"] = f"Indexed {count} chunks. Older vectors for this document were replaced."
+        st.rerun()
+    if cancel_col.button("Cancel", key=f"cancel-index-{document_id}", use_container_width=True):
+        st.rerun()
+
+
 def render_document_detail(service: WorkspaceService, document_id: str) -> None:
     document = service.workspace.get_document(document_id)
     if document is None:
         return
     review_notice = st.session_state.pop("review_notice", None)
+    action_notice = st.session_state.pop("document-action-notice", None)
     if review_notice:
         st.markdown(
             f"<div class='duplicate-notice'><strong>Existing document opened.</strong> "
             f"{escape(review_notice)}</div>",
             unsafe_allow_html=True,
         )
+    if action_notice:
+        render_success_notice(action_notice)
     validation = service.workspace.get_latest_validation_summary(document.document_id)
     chunks = service.workspace.list_chunks(document.document_id)
     markdown_text = read_text(document.artifacts.get("markdown"))
@@ -801,27 +935,20 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
         index_note = "Indexed in ChromaDB" if document.status == "indexed" else "Not indexed"
         st.markdown(
             f"<div class='document-meta'>{escape(document.file_type.upper())} &middot; {escape(document.version)} &middot; "
-            f"{escape(document.parser_name or 'parser unavailable')} &middot; {len(chunks)} validated chunks &middot; {index_note}</div>",
+            f"{escape(parser_display_name(document.parser_name))} &middot; {len(chunks)} validated chunks &middot; {index_note}</div>",
             unsafe_allow_html=True,
         )
         st.markdown("<div class='document-toolbar'></div>", unsafe_allow_html=True)
-        left_actions, spacer, right_action = st.columns([2.4, 2.0, 1.35], vertical_alignment="center")
+        left_actions, spacer, right_action = st.columns([1.0, 4.4, 1.6], vertical_alignment="center")
         with left_actions:
-            process_col, detail_col, download_col = st.columns([1, 1, 1.05], gap="small")
-            if process_col.button("Re-process", key=f"process-{document.document_id}"):
+            if st.button("Re-process", key=f"process-{document.document_id}"):
                 try:
                     service.ingest_document(document.document_id)
                 except Exception as exc:
                     st.error(f"Processing failed: {exc}")
                 else:
-                    st.success("Document re-processed. Review and approve again before indexing.")
+                    st.session_state["document-action-notice"] = "Document re-processed. Review and approve again before indexing."
                     st.rerun()
-            with detail_col.popover("Run details"):
-                st.caption(f"Source: `{document.source_path}`")
-                st.caption(f"Checksum: `{document.checksum}`")
-                st.caption(f"Collection: `{document.collection_name or DEFAULT_COLLECTION}`")
-            with download_col:
-                render_source_download_button(service, document.document_id, f"download-source-review-{document.document_id}")
         if document.status == "review_ready":
             if right_action.button("Approve for indexing", key=f"approve-{document.document_id}", type="primary"):
                 try:
@@ -829,7 +956,7 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
                 except Exception as exc:
                     st.error(f"Approval failed: {exc}")
                 else:
-                    st.success("Document approved. You can index it now.")
+                    st.session_state["document-action-notice"] = "Document approved. You can index it now."
                     st.rerun()
         else:
             index_label = f"Index {len(chunks)} chunks" if chunks else "Index approved chunks"
@@ -839,18 +966,12 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
                 disabled=document.status != "approved",
                 type="primary",
             ):
-                try:
-                    count = service.index_document(document.document_id, DEFAULT_COLLECTION, DEFAULT_CHROMA_DIR)
-                except Exception as exc:
-                    st.error(f"Indexing failed: {exc}")
-                else:
-                    st.success(f"Indexed {count} chunks. Older vectors for this document were replaced.")
-                    st.rerun()
+                confirm_document_index_dialog(service, document.document_id, len(chunks))
 
     if document.error_message:
         st.error(document.error_message)
 
-    tabs = st.tabs(["Validation", "Chunks", "Markdown", "Processing artifact"])
+    tabs = st.tabs(["Summary", "Chunks", "Artifacts"])
     with tabs[0]:
         validation_summary = (validation or {}).get("summary", {})
         validation_events = (validation or {}).get("events", [])
@@ -874,13 +995,27 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
         block_count = validation_summary.get("block_count", len(canonical_json.get("blocks", [])))
         artifact_presence = validation_summary.get("artifact_presence")
         artifact_value = "Not recorded" if not isinstance(artifact_presence, dict) else ("Available" if all(artifact_presence.values()) else "Incomplete")
+        processing_status = "Failed" if document.status == "failed" else ("Not processed" if document.status == "registered" else "Completed")
+        review_status = {
+            "registered": "Not started",
+            "review_ready": "Awaiting approval",
+            "approved": "Approved for indexing",
+            "validated": "Approved for indexing",
+            "low_confidence": "Needs attention",
+            "indexed": "Indexed",
+            "failed": "Unavailable",
+        }.get(document.status, document.status.replace("_", " ").title())
         validation_values = [
-            ("Run", (validation or {}).get("run_status", document.status).replace("_", " ").title()),
-            ("Parser", (validation or {}).get("parser") or " ".join(part for part in [document.parser_name, document.parser_version] if part) or "Unavailable"),
+            ("Processing status", processing_status),
+            ("Review status", review_status),
+            ("Parser", parser_display_name(document.parser_name or (validation or {}).get("parser"))),
             ("Blocks", str(block_count)),
-            ("Chunks", str(len(chunks))),
+            ("Validated chunks", str(len(chunks))),
             ("Artifacts", artifact_value),
             ("Warnings / errors", str(len(validation_events)) if validation_run else "Not recorded"),
+            ("Source", document.source_path),
+            ("Checksum", document.checksum),
+            ("Collection", document.collection_name or DEFAULT_COLLECTION),
         ]
         audit_rows = "".join(
             f"<div class='validation-audit-row'><div class='validation-audit-label'>{escape(label)}</div>"
@@ -900,19 +1035,28 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
         search_input, search_action = st.columns([5, 0.8], vertical_alignment="bottom")
         chunk_query = search_input.text_input(
             "Search chunks",
-            placeholder="Search section, chunk text, or chunk ID",
+            placeholder="Enter a chunk number, or search section, text, or ID",
             key=search_key,
         )
         if chunk_query.strip():
             search_action.button("Clear search", key=f"clear-chunk-search-{document.document_id}", on_click=clear_chunk_search, args=(search_key,))
         normalized_query = normalize_search_text(chunk_query)
-        visible_chunks = [
-            item for item in chunks
-            if not normalized_query
-            or normalized_query in normalize_search_text(str(item.get("section_path") or ""))
-            or normalized_query in normalize_search_text(str(item.get("chunk_id") or ""))
-            or normalized_query in normalize_search_text(full_chunk_text.get(item.get("chunk_id"), item.get("text_preview", "")))
-        ]
+        if normalized_query.isdecimal():
+            requested_chunk_number = int(normalized_query)
+            visible_chunks = [
+                item
+                for item in chunks
+                if str(item.get("chunk_index") or "").isdecimal()
+                and int(item["chunk_index"]) == requested_chunk_number
+            ]
+        else:
+            visible_chunks = [
+                item for item in chunks
+                if not normalized_query
+                or normalized_query in normalize_search_text(str(item.get("section_path") or ""))
+                or normalized_query in normalize_search_text(str(item.get("chunk_id") or ""))
+                or normalized_query in normalize_search_text(full_chunk_text.get(item.get("chunk_id"), item.get("text_preview", "")))
+            ]
         if not chunks:
             st.info("No chunks have been recorded for this document.")
         elif not visible_chunks:
@@ -923,60 +1067,69 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
         else:
             if normalized_query:
                 st.caption(f"Showing {len(visible_chunks)} of {len(chunks)} validated chunks")
-            for index, item in enumerate(visible_chunks, start=1):
-                full_text = full_chunk_text.get(item.get("chunk_id"), item.get("text_preview", ""))
-                preview = full_text.replace("\n", " ").strip()
-                if len(preview) > 220:
-                    preview = preview[:217].rstrip() + "..."
-                page = item.get("page_start") if item.get("page_start") is not None else "—"
-                indexed = "Yes" if item.get("indexed_at") else "No"
-                chunk_number = int(item.get("chunk_index") or index)
-                with st.container(border=True, key=f"chunk-evidence-{document.document_id}-{item.get('chunk_id')}"):
-                    st.markdown(
-                        f"<div class='evidence-title'>Chunk {chunk_number:02d} &middot; {escape(item.get('section_path') or 'Untitled section')}</div>"
-                        f"<div class='evidence-meta'>{escape(item.get('chunk_id') or '')} &nbsp;·&nbsp; Page {page} &nbsp;·&nbsp; Indexed {indexed}</div>"
-                        f"<div class='evidence-preview'>{escape(preview)}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    with st.expander(f"View full chunk {chunk_number:02d}"):
-                        st.markdown(f"<div class='chunk-full-text'>{evidence_html(full_text)}</div>", unsafe_allow_html=True)
+            with st.container(height=620, border=True, key=f"chunk-results-{document.document_id}"):
+                for index, item in enumerate(visible_chunks, start=1):
+                    full_text = full_chunk_text.get(item.get("chunk_id"), item.get("text_preview", ""))
+                    preview = full_text.replace("\n", " ").strip()
+                    if len(preview) > 220:
+                        preview = preview[:217].rstrip() + "..."
+                    page = item.get("page_start") if item.get("page_start") is not None else "—"
+                    indexed = "Yes" if item.get("indexed_at") else "No"
+                    chunk_number = int(item.get("chunk_index") or index)
+                    with st.container(border=True, key=f"chunk-evidence-{document.document_id}-{item.get('chunk_id')}"):
+                        st.markdown(
+                            f"<div class='evidence-title'>Chunk {chunk_number:02d} &middot; {escape(item.get('section_path') or 'Untitled section')}</div>"
+                            f"<div class='evidence-meta'>{escape(item.get('chunk_id') or '')} &nbsp;·&nbsp; Page {page} &nbsp;·&nbsp; Indexed {indexed}</div>"
+                            f"<div class='evidence-preview'>{escape(preview)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        with st.expander(f"View full chunk {chunk_number:02d}"):
+                            st.markdown(f"<div class='chunk-full-text'>{evidence_html(full_text)}</div>", unsafe_allow_html=True)
 
     with tabs[2]:
-        markdown_preview, markdown_source = st.tabs(["Preview", "Source"])
-        with markdown_preview:
-            if markdown_text:
-                with st.container(border=True, key="markdown-preview-content"):
-                    st.markdown(markdown_text)
-            else:
-                st.info("No Markdown preview generated.")
-            with st.expander("Document metadata"):
-                st.caption(f"Document ID: `{document.document_id}`")
-                st.caption(f"Type: `{document.file_type.upper()}`")
-                st.caption(f"Source filename: `{document.file_name}`")
-                st.caption(f"Source path: `{document.source_path}`")
-                st.caption(f"Parser: `{document.parser_name or 'unavailable'} {document.parser_version or ''}`")
-                st.caption(f"Version: `{document.version}`")
-        with markdown_source:
-            st.code(markdown_text or "No Markdown source generated.", language="markdown")
-
-    with tabs[3]:
         blocks = canonical_json.get("blocks", [])
         metadata = canonical_json.get("metadata", {})
         with st.container(border=True):
-            st.markdown("#### Processing artifact")
-            st.caption("Summary of the canonical parser output. Download the full JSON for audit or debugging.")
+            st.markdown("#### Artifacts")
+            st.caption("Review generated processing outputs or download the canonical JSON for auditing and debugging.")
             summary = st.columns(3)
             summary[0].markdown(f"<div class='artifact-value'>{len(blocks)}</div><div class='artifact-label'>Blocks</div>", unsafe_allow_html=True)
             summary[1].markdown(f"<div class='artifact-value'>{len(chunks)}</div><div class='artifact-label'>Validated chunks</div>", unsafe_allow_html=True)
             source_format = str(metadata.get("source_format") or document.file_type).upper()
             summary[2].markdown(f"<div class='artifact-value'>{escape(source_format)}</div><div class='artifact-label'>Source format</div>", unsafe_allow_html=True)
-            st.caption(f"Document ID: `{canonical_json.get('document_id', document.document_id)}`  |  Parser: `{document.parser_name or 'unavailable'} {document.parser_version or ''}`")
-            st.download_button(
+            st.markdown(
+                f"<div class='artifact-meta'><strong>Document ID</strong> "
+                f"<span class='artifact-meta-value'>{escape(str(canonical_json.get('document_id', document.document_id)))}</span>"
+                f" &nbsp;&middot;&nbsp; <strong>Parser</strong> "
+                f"<span class='artifact-meta-value'>{escape(parser_display_name(document.parser_name))}</span></div>",
+                unsafe_allow_html=True,
+            )
+            locations = (
+                ("Markdown location", document.artifacts.get("markdown") or "Not generated"),
+                ("Canonical JSON location", document.artifacts.get("document_json") or "Not generated"),
+            )
+            location_rows = "".join(
+                f"<div class='artifact-location-row'><div class='artifact-location-label'>{escape(label)}</div>"
+                f"<div class='artifact-location-value'>{escape(str(value))}</div></div>"
+                for label, value in locations
+            )
+            st.markdown(f"<div class='artifact-location-list'>{location_rows}</div>", unsafe_allow_html=True)
+            markdown_download, canonical_download = st.columns(2)
+            markdown_download.download_button(
+                "Download Markdown",
+                data=markdown_text or "",
+                file_name=f"{Path(document.file_name).stem}.md",
+                mime="text/markdown",
+                key=f"download-markdown-{document.document_id}",
+                use_container_width=True,
+            )
+            canonical_download.download_button(
                 "Download canonical JSON",
                 data=json.dumps(canonical_json, indent=2, ensure_ascii=False),
                 file_name=f"{Path(document.file_name).stem}-canonical.json",
                 mime="application/json",
                 key=f"download-canonical-{document.document_id}",
+                use_container_width=True,
             )
 
 
@@ -1029,13 +1182,14 @@ def render_retrieval(service: WorkspaceService) -> None:
         )
         st.markdown("<div style='height:.75rem'></div>", unsafe_allow_html=True)
         scope_col, count_col = st.columns([2.4, 1], vertical_alignment="top")
+        scope_col.markdown("<div class='retrieval-field-label'>Indexed collection</div>", unsafe_allow_html=True)
         scope_col.markdown(
             f"<div class='upload-info-strip'><strong>Collection:</strong> {escape(DEFAULT_COLLECTION)} &nbsp;·&nbsp; "
             f"<strong>Indexed documents:</strong> {indexed_count}</div>",
             unsafe_allow_html=True,
         )
         with count_col:
-            st.markdown("<div class='retrieval-results-label'>Top results</div>", unsafe_allow_html=True)
+            st.markdown("<div class='retrieval-field-label'>Top results</div>", unsafe_allow_html=True)
             result_count = st.selectbox("Top results", [3, 5, 8], index=0, label_visibility="collapsed")
         question_col, _ = st.columns([4, 1])
         with question_col:
@@ -1044,7 +1198,7 @@ def render_retrieval(service: WorkspaceService) -> None:
                 placeholder="Ask a question whose answer appears in an indexed document.",
                 height=76,
             )
-        run = st.button("Run retrieval", type="primary")
+        run = st.button("Run retrieval", type="primary", disabled=indexed_count == 0)
     if indexed_count == 0:
         st.markdown(
             "<div class='retrieval-empty'><strong>No indexed documents yet.</strong><br>Approve and index a reviewed document before verifying retrieval.</div>",
@@ -1052,8 +1206,9 @@ def render_retrieval(service: WorkspaceService) -> None:
         )
     if not run:
         return
-    if not query.strip():
-        st.warning("Enter a question before running retrieval.")
+    query_error = validate_retrieval_query(query)
+    if query_error:
+        st.markdown(f"<div class='retrieval-query-error'>{escape(query_error)}</div>", unsafe_allow_html=True)
         return
     with st.spinner("Searching indexed chunks..."):
         try:
@@ -1071,21 +1226,20 @@ def render_retrieval(service: WorkspaceService) -> None:
     )
     for position, result in enumerate(results, start=1):
         with st.container(border=True):
-            header, score, download = st.columns([4.5, 1, 1.35], vertical_alignment="center")
+            header, score = st.columns([5.85, 1], vertical_alignment="center")
             header.markdown(
-                f"<div class='retrieval-rank'>Result {position:02d}</div>"
-                f"<div class='retrieval-file'>{escape(result.file_name)}</div>"
-                f"<div class='retrieval-citation'>{escape(result.citation)}</div>",
+                f"<div class='retrieval-rank'>Result {position:02d}</div>",
                 unsafe_allow_html=True,
             )
-            score.markdown(f"<div style='text-align:right'><span class='score-pill'>{result.score:.2f}</span></div>", unsafe_allow_html=True)
-            with download:
+            with header:
                 render_source_download_button(
                     service,
                     result.document_id,
                     f"download-source-retrieval-{position}-{result.document_id}",
-                    label="Download file",
+                    label=result.file_name,
                 )
+                st.markdown(f"<div class='retrieval-citation'>{escape(result.citation)}</div>", unsafe_allow_html=True)
+            score.markdown(f"<div style='text-align:right'><span class='score-pill'>{result.score:.2f}</span></div>", unsafe_allow_html=True)
             st.markdown(f"<div class='retrieval-text'>{evidence_html(result.text)}</div>", unsafe_allow_html=True)
 
 
