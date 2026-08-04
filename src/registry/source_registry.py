@@ -44,10 +44,16 @@ def display_path(path: Path) -> str:
 
 
 def find_supported_files(raw_dir: Path, extensions: set[str]) -> list[Path]:
+    """Find source documents while ignoring Office's transient lock files."""
+
     files = [
         path
         for path in raw_dir.rglob("*")
-        if path.is_file() and path.suffix.lower() in extensions
+        if (
+            path.is_file()
+            and path.suffix.lower() in extensions
+            and not path.name.startswith("~$")
+        )
     ]
     return sorted(files)
 

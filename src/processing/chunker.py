@@ -12,6 +12,8 @@ MAX_WORDS = 350
 OVERLAP_WORDS = 50
 MIN_CHUNK_WORDS = 25
 PRICE_ROW_PATTERN = re.compile(r"\bRM\s*\d", re.IGNORECASE)
+ZERO_WIDTH_CHARS = "\u200b\u200c\u200d\ufeff"
+SECTION_SEPARATOR = " - "
 
 
 @dataclass
@@ -48,14 +50,6 @@ def group_by_heading(document: CanonicalDocument) -> list[ChunkDraft]:
 
 
 def group_web_by_major_heading(document: CanonicalDocument) -> list[ChunkDraft]:
-    """Keep small web subheadings with their parent, but split major sections.
-
-    Web help pages often mark every step as a heading. Treating every one as a
-    new section makes the chunker merge unrelated short drafts later. For web
-    pages, level 1-2 headings are a safer boundary; level 3+ headings stay as
-    local structure inside the current section.
-    """
-
     drafts: list[ChunkDraft] = []
     current = ChunkDraft(section_path="Introduction")
 
@@ -79,8 +73,6 @@ def group_web_by_major_heading(document: CanonicalDocument) -> list[ChunkDraft]:
 
 
 def group_pdf_by_major_heading(document: CanonicalDocument) -> list[ChunkDraft]:
-    """Keep noisy PDF subheadings with their numbered top-level section."""
-
     drafts: list[ChunkDraft] = []
     current = ChunkDraft(section_path="Introduction")
 
@@ -127,8 +119,6 @@ def table_section_title(block: ParsedBlock) -> str:
 
 
 def group_by_table(document: CanonicalDocument) -> list[ChunkDraft]:
-    """Use DOCX table boundaries when a document has no usable heading styles."""
-
     drafts: list[ChunkDraft] = []
     current = ChunkDraft(section_path="Introduction")
 
@@ -136,8 +126,6 @@ def group_by_table(document: CanonicalDocument) -> list[ChunkDraft]:
         if block.block_type == BlockType.TABLE:
             if current.blocks:
                 if current.section_path == "Introduction":
-                    # A DOCX title is usually a short paragraph immediately before
-                    # the first structured section, so keep it with that section.
                     current = ChunkDraft(section_path=table_section_title(block), blocks=current.blocks + [block])
                     continue
                 drafts.append(current)
@@ -153,6 +141,11 @@ def group_by_table(document: CanonicalDocument) -> list[ChunkDraft]:
 
 def draft_text(blocks: list[ParsedBlock]) -> str:
     return "\n".join(block.text for block in blocks if block.text.strip()).strip()
+
+
+def normalized_label(value: str) -> str:
+    translation = str.maketrans("", "", ZERO_WIDTH_CHARS)
+    return " ".join(value.translate(translation).split()).casefold()
 
 
 def unique_parts(values: list[str]) -> list[str]:
@@ -220,24 +213,12 @@ def pages_for(blocks: list[ParsedBlock]) -> tuple[int | None, int | None]:
     return min(pages), max(pages)
 
 
-def normalized_label(value: str) -> str:
-    return " ".join(value.split()).casefold()
-
-
 def is_product_price_header(value: str) -> bool:
     normalized = normalized_label(value)
     return "price" in normalized and ("offer" in normalized or "eligib" in normalized)
 
 
 def split_product_price_table(draft: ChunkDraft) -> list[tuple[str, str, dict[str, str]]] | None:
-    """Split a large price table into product-level retrieval units.
-
-    DOCX tables are intentionally flattened into readable rows by the parser.
-    When a table has a three-column header and price-bearing rows, retaining the
-    heading, header, and all rows for one product makes each offer retrievable
-    without throwing away its eligibility or pricing context.
-    """
-
     tables = [
         block
         for block in draft.blocks
@@ -285,7 +266,7 @@ def split_product_price_table(draft: ChunkDraft) -> list[tuple[str, str, dict[st
         text = "\n".join([*context, header, f"Product: {label}", *rows])
         results.append(
             (
-                f"{draft.section_path} · {label}",
+                f"{draft.section_path}{SECTION_SEPARATOR}{label}",
                 text,
                 {"table_chunking": "product_group", "table_product": label},
             )
@@ -295,7 +276,7 @@ def split_product_price_table(draft: ChunkDraft) -> list[tuple[str, str, dict[st
         text = "\n".join([*context, "Notes", *pending_context])
         results.append(
             (
-                f"{draft.section_path} · Notes",
+                f"{draft.section_path}{SECTION_SEPARATOR}Notes",
                 text,
                 {"table_chunking": "table_notes"},
             )
@@ -308,7 +289,13 @@ def normalize_table_rows(rows: list[list[str]]) -> list[list[str]]:
     width = max((len(row) for row in rows), default=0)
     normalized: list[list[str]] = []
     for row in rows:
-        collapsed = [" ".join(str(cell).split()) for cell in row]
+        # A DOCX cell can contain several paragraphs, often because the author
+        # used a bullet list.  Keep those paragraph boundaries for chunk
+        # rendering instead of flattening them into an ambiguous sentence.
+        collapsed = [
+            "\n".join(" ".join(line.split()) for line in str(cell).splitlines() if line.strip())
+            for cell in row
+        ]
         normalized.append(collapsed + [""] * (width - len(collapsed)))
     return normalized
 
@@ -321,7 +308,8 @@ def repeated_value_ratio(values: list[str]) -> float:
 
 
 def sanitize_chunk_text(text: str, section_path: str | None = None) -> str:
-    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    translation = str.maketrans("", "", ZERO_WIDTH_CHARS)
+    lines = [" ".join(line.translate(translation).split()) for line in text.splitlines() if line.strip()]
     if not lines:
         return ""
 
@@ -339,6 +327,17 @@ def sanitize_chunk_text(text: str, section_path: str | None = None) -> str:
         previous_normalized = normalized
 
     if section_normalized:
+        # Structured DOCX overview tables commonly begin with a row such as
+        # ``2. Product Details: 2. Product Details``.  The chunk already
+        # carries that section as its first line, so retaining the table row
+        # repeats the title without adding evidence.  Collapse only this
+        # exact leading duplication; do not remove ordinary labels whose
+        # content merely happens to mention the section name.
+        if len(deduped_lines) >= 2 and normalized_label(deduped_lines[0]) == section_normalized:
+            repeated_title = normalized_label(deduped_lines[1])
+            if repeated_title == f"{section_normalized}: {section_normalized}":
+                deduped_lines.pop(1)
+
         while len(deduped_lines) >= 2:
             first = normalized_label(deduped_lines[0])
             second = normalized_label(deduped_lines[1])
@@ -353,16 +352,17 @@ def sanitize_chunk_text(text: str, section_path: str | None = None) -> str:
 
 
 def sanitize_section_path(section_path: str) -> str:
-    base, separator, suffix = section_path.partition(" · ")
-    if not separator:
-        base, separator, suffix = section_path.partition(" 路 ")
-
+    for char in ZERO_WIDTH_CHARS:
+        section_path = section_path.replace(char, "")
+    section_path = re.sub(r"\s+", " ", section_path).strip()
+    base, separator, suffix = section_path.partition(SECTION_SEPARATOR)
     if "|" not in base:
         return section_path
 
     parts = unique_parts([part.strip() for part in base.split("|")])
     cleaned_base = " | ".join(parts)
-    return cleaned_base if not separator else f"{cleaned_base}{separator}{suffix}"
+    cleaned_suffix = re.sub(r"\s+", " ", suffix).strip()
+    return cleaned_base if not separator else f"{cleaned_base}{separator}{cleaned_suffix}"
 
 
 def table_group_title(rows: list[list[str]]) -> str | None:
@@ -377,12 +377,7 @@ def table_group_title(rows: list[list[str]]) -> str | None:
 
 
 def build_column_chunk_label(header_cells: list[str]) -> str:
-    parts: list[str] = []
-    for cell in header_cells:
-        value = " ".join(cell.split())
-        if value and value not in parts:
-            parts.append(value)
-    return " · ".join(parts)
+    return SECTION_SEPARATOR.join(unique_parts(header_cells))
 
 
 def table_rows_to_text(rows: list[list[str]]) -> str:
@@ -392,14 +387,280 @@ def table_rows_to_text(rows: list[list[str]]) -> str:
         if not cells:
             continue
         if len(cells) == 2:
-            lines.append(f"{cells[0]}: {cells[1]}")
+            lines.extend(format_table_field(cells[0], cells[1]))
         else:
             lines.append(" | ".join(cells))
     return "\n".join(lines).strip()
 
 
-def build_column_chunk_label(header_cells: list[str]) -> str:
-    return " 路 ".join(unique_parts(header_cells))
+def format_table_field(key: str, value: str) -> list[str]:
+    """Render a multi-paragraph DOCX cell as evidence-preserving bullets."""
+
+    value_lines = [" ".join(line.split()) for line in value.splitlines() if line.strip()]
+    if len(value_lines) <= 1:
+        return [f"{key}: {value_lines[0]}" if value_lines else key]
+
+    bullets = [line.lstrip("-•* ").strip() for line in value_lines]
+    return [f"{key}:", *[f"- {line}" for line in bullets if line]]
+
+
+def is_same_value_row(row: list[str]) -> bool:
+    values = [value for value in row if value]
+    return bool(values) and len(set(values)) == 1
+
+
+def split_two_column_comparison(
+    draft: ChunkDraft,
+    rows: list[list[str]],
+    structure_index: int,
+) -> list[tuple[str, str, dict[str, str]]] | None:
+    """Keep paired comparison values together when a two-column table proves their grouping."""
+
+    if len(rows) < 3 or max(len(row) for row in rows) != 2:
+        return None
+
+    lines = [draft.section_path]
+    found_comparison = False
+    index = 0
+    while index < len(rows):
+        row = rows[index]
+        if not is_same_value_row(row):
+            return None
+        group = next(value for value in row if value)
+        index += 1
+
+        # A terminal repeated row represents a group with one shared value,
+        # e.g. ``Prepaid | Prepaid`` then ``Not eligible | Not eligible``.
+        if index < len(rows) and is_same_value_row(rows[index]):
+            value = next(value for value in rows[index] if value)
+            if normalized_label(value) != normalized_label(group):
+                lines.append(f"{group}: {value}")
+                found_comparison = True
+            index += 1
+            continue
+
+        # A comparison pair must be bounded by another group row or the table
+        # end. This avoids mistaking ordinary two-column key/value tables for
+        # a comparison table.
+        if index + 1 >= len(rows):
+            return None
+        headers, values = rows[index], rows[index + 1]
+        next_index = index + 2
+        if (
+            not all(headers)
+            or not all(values)
+            or next_index < len(rows) and not is_same_value_row(rows[next_index])
+        ):
+            return None
+
+        lines.append(f"{group}:")
+        for header, value in zip(headers, values):
+            lines.extend(format_table_field(header, value))
+        found_comparison = True
+        index = next_index
+
+    if not found_comparison:
+        return None
+    return [
+        (
+            f"{draft.section_path}{SECTION_SEPARATOR}Comparison",
+            sanitize_chunk_text("\n".join(lines), draft.section_path),
+            {"table_chunking": "two_column_comparison", "table_structure_index": str(structure_index)},
+        )
+    ]
+
+
+def is_long_two_column_reference_table(rows: list[list[str]]) -> bool:
+    """Identify a long key-to-prose reference table without naming its domain."""
+
+    if len(rows) < 8 or max(len(row) for row in rows) != 2:
+        return False
+    if not all(len(row) == 2 and row[0] and row[1] for row in rows):
+        return False
+    return any(len(row[1]) >= 240 for row in rows)
+
+
+def split_long_two_column_reference_rows(
+    draft: ChunkDraft,
+    rows: list[list[str]],
+    structure_index: int,
+) -> list[tuple[str, str, dict[str, str]]] | None:
+    """Create one evidence unit per entry for a long two-column reference table."""
+
+    if not is_long_two_column_reference_table(rows):
+        return None
+
+    outputs: list[tuple[str, str, dict[str, str]]] = []
+    for row_index, (label, value) in enumerate(rows, start=1):
+        text = "\n".join([draft.section_path, f"Item: {label}", value])
+        outputs.append(
+            (
+                f"{draft.section_path}{SECTION_SEPARATOR}{label}",
+                sanitize_chunk_text(text, draft.section_path),
+                {
+                    "table_chunking": "long_two_column_reference_row",
+                    "table_structure_index": str(structure_index),
+                    "table_row_index": str(row_index),
+                    "table_group": label,
+                },
+            )
+        )
+    return outputs
+
+
+def is_repeated_rate_schedule_table(rows: list[list[str]]) -> bool:
+    if len(rows) < 5 or len(rows[0]) < 3 or not all(rows[0]):
+        return False
+    keys = [row[0] for row in rows[1:] if row and row[0]]
+    non_key_values = [value for row in rows[1:] for value in row[1:] if value]
+    charge_values = [row[-1] for row in rows[1:] if row and row[-1]]
+    range_count = sum(bool(re.search(r"\b\d+(?:\.\d+)?\s*(?:kb|mb|gb|tb)\b", value, re.IGNORECASE)) for value in non_key_values)
+    money_count = sum(bool(re.search(r"\bRM\s*\d", value, re.IGNORECASE)) for value in non_key_values)
+    return (
+        len(keys) >= 4
+        and repeated_value_ratio(keys) <= 0.75
+        and range_count >= 3
+        and money_count >= 3
+        and len(charge_values) >= 4
+        and repeated_value_ratio(charge_values) <= 0.5
+    )
+
+
+def split_repeated_rate_schedule_table(
+    draft: ChunkDraft,
+    rows: list[list[str]],
+    structure_index: int,
+) -> list[tuple[str, str, dict[str, str]]] | None:
+    """Preserve row-level relationships for tables with repeated record keys."""
+
+    if not is_repeated_rate_schedule_table(rows):
+        return None
+
+    headers = rows[0]
+    records = [draft.section_path, f"Table: {' | '.join(headers)}"]
+    for row in rows[1:]:
+        values = row + [""] * (len(headers) - len(row))
+        fields = [f"{header}: {value}" for header, value in zip(headers, values) if value]
+        if fields:
+            records.append(" | ".join(fields))
+
+    if len(records) <= 2:
+        return None
+    label = headers[1] if len(headers) > 1 and headers[1] else headers[0]
+    return [
+        (
+            f"{draft.section_path}{SECTION_SEPARATOR}{label}",
+            sanitize_chunk_text("\n".join(records), draft.section_path),
+            {"table_chunking": "repeated_rate_schedule", "table_structure_index": str(structure_index)},
+        )
+    ]
+
+
+def is_bundle_partner_table(rows: list[list[str]]) -> bool:
+    if len(rows) < 3 or len(rows[0]) < 2:
+        return False
+
+    first_label = normalized_label(rows[0][0])
+    second_label = normalized_label(rows[1][0])
+    if "bundle" not in first_label:
+        return False
+    if "streaming partner" not in second_label and "streaming partners" not in second_label and "partner" not in second_label:
+        return False
+    return any(cell.strip() for cell in rows[0][1:]) and any(cell.strip() for cell in rows[1][1:])
+
+
+def candidate_column_disambiguators(row_lookup: dict[str, str]) -> list[str]:
+    return [
+        row_lookup.get(normalized_label("Monthly cycle"), ""),
+        row_lookup.get(normalized_label("Access"), ""),
+        row_lookup.get(normalized_label("CelcomDigi Price (RM)"), ""),
+        row_lookup.get(normalized_label("Quota (5G+4G)"), ""),
+    ]
+
+
+def make_bundle_partner_label(
+    bundle: str,
+    partner: str,
+    row_lookup: dict[str, str],
+    seen_labels: set[str],
+) -> str:
+    base = " | ".join(part for part in (bundle, partner) if part).strip() or "Bundle Offer"
+    if base not in seen_labels:
+        seen_labels.add(base)
+        return base
+
+    for disambiguator in candidate_column_disambiguators(row_lookup):
+        value = " ".join(disambiguator.split())
+        if not value:
+            continue
+        candidate = f"{base} | {value}"
+        if candidate not in seen_labels:
+            seen_labels.add(candidate)
+            return candidate
+
+    suffix = 2
+    while True:
+        candidate = f"{base} | Option {suffix}"
+        if candidate not in seen_labels:
+            seen_labels.add(candidate)
+            return candidate
+        suffix += 1
+
+    return base
+
+
+def split_bundle_partner_columns(
+    draft: ChunkDraft,
+    rows: list[list[str]],
+    structure_index: int,
+) -> list[tuple[str, str, dict[str, str]]] | None:
+    if not is_bundle_partner_table(rows):
+        return None
+
+    outputs: list[tuple[str, str, dict[str, str]]] = []
+    seen_labels: set[str] = set()
+
+    for column in range(1, len(rows[0])):
+        bundle = rows[0][column].strip() if column < len(rows[0]) else ""
+        partner = rows[1][column].strip() if column < len(rows[1]) else ""
+        if not bundle and not partner:
+            continue
+
+        row_lookup: dict[str, str] = {}
+        lines = [draft.section_path]
+        if bundle:
+            lines.append(f"Bundle: {bundle}")
+        if partner:
+            lines.append(f"Partner: {partner}")
+
+        for row in rows[2:]:
+            key = row[0].strip() if row else ""
+            if not key or column >= len(row):
+                continue
+            value = row[column].strip()
+            if not value:
+                continue
+            row_lookup[normalized_label(key)] = value
+            lines.extend(format_table_field(key, value))
+
+        if len(lines) <= 3:
+            continue
+
+        label = make_bundle_partner_label(bundle, partner, row_lookup, seen_labels)
+        outputs.append(
+            (
+                f"{draft.section_path}{SECTION_SEPARATOR}{label}",
+                sanitize_chunk_text("\n".join(lines).strip(), draft.section_path),
+                {
+                    "table_chunking": "bundle_partner_column",
+                    "table_structure_index": str(structure_index),
+                    "table_group": bundle or partner or label,
+                    "table_partner": partner,
+                },
+            )
+        )
+
+    return outputs or None
 
 
 def is_generic_offer_header(rows: list[list[str]]) -> bool:
@@ -445,14 +706,14 @@ def split_generic_offer_rows(
             value = row[index].strip()
             if not value:
                 continue
-            lines.append(f"{header}: {value}")
+            lines.extend(format_table_field(header, value))
 
         if len(lines) <= 2:
             continue
 
         outputs.append(
             (
-                f"{draft.section_path} · {label}",
+                f"{draft.section_path}{SECTION_SEPARATOR}{label}",
                 sanitize_chunk_text("\n".join(lines).strip(), draft.section_path),
                 {
                     "table_chunking": "structured_offer_row",
@@ -471,8 +732,24 @@ def direct_table_structure_chunks(
     structure_index: int,
 ) -> list[tuple[str, str, dict[str, str]]] | None:
     rows = normalize_table_rows(rows)
+    reference_rows = split_long_two_column_reference_rows(draft, rows, structure_index)
+    if reference_rows is not None:
+        return reference_rows
+
+    comparison = split_two_column_comparison(draft, rows, structure_index)
+    if comparison is not None:
+        return comparison
+
+    repeated_records = split_repeated_rate_schedule_table(draft, rows, structure_index)
+    if repeated_records is not None:
+        return repeated_records
+
     if len(rows) < 3 or len(rows[0]) < 3:
         return None
+
+    bundle_partner_columns = split_bundle_partner_columns(draft, rows, structure_index)
+    if bundle_partner_columns is not None:
+        return bundle_partner_columns
 
     generic_offer_rows = split_generic_offer_rows(draft, rows, structure_index)
     if generic_offer_rows is not None:
@@ -512,7 +789,7 @@ def direct_table_structure_chunks(
                         lines.append(f"{prefix}{country}")
                 outputs.append(
                     (
-                        f"{draft.section_path} · {label}",
+                        f"{draft.section_path}{SECTION_SEPARATOR}{label}",
                         sanitize_chunk_text("\n".join(lines).strip(), draft.section_path),
                         {
                             "table_chunking": "paired_column_group",
@@ -554,14 +831,14 @@ def direct_table_structure_chunks(
             key = row[0].strip()
             value = row[column].strip()
             if key and value:
-                lines.append(f"{key}: {value}")
+                lines.extend(format_table_field(key, value))
             elif value:
                 lines.append(value)
         if len(lines) <= 2:
             continue
         outputs.append(
             (
-                f"{draft.section_path} · {label}",
+                f"{draft.section_path}{SECTION_SEPARATOR}{label}",
                 sanitize_chunk_text("\n".join(lines).strip(), draft.section_path),
                 {
                     "table_chunking": "structured_column_group",
@@ -609,7 +886,7 @@ def split_structured_docx_table(draft: ChunkDraft) -> list[tuple[str, str, dict[
             if word_count(overview_text) >= 20:
                 outputs.append(
                     (
-                        f"{draft.section_path} · Overview",
+                        f"{draft.section_path}{SECTION_SEPARATOR}Overview",
                         sanitize_chunk_text("\n".join([draft.section_path, overview_text]).strip(), draft.section_path),
                         {
                             "table_chunking": "table_overview",
@@ -625,11 +902,11 @@ def split_structured_docx_table(draft: ChunkDraft) -> list[tuple[str, str, dict[
             continue
 
         fallback_text = table_rows_to_text(normalized_rows)
-        if fallback_text and word_count(fallback_text) <= MAX_WORDS:
+        if fallback_text:
             title = table_group_title(normalized_rows) or f"Table {structure_index}"
             outputs.append(
                 (
-                    f"{draft.section_path} · {title}",
+                    f"{draft.section_path}{SECTION_SEPARATOR}{title}",
                     sanitize_chunk_text("\n".join([draft.section_path, fallback_text]).strip(), draft.section_path),
                     {
                         "table_chunking": "table_subsection",
@@ -675,7 +952,7 @@ def blocks_to_chunk(
         source_block_ids=[block.block_id for block in blocks],
         version=document.version,
         metadata={
-            "chunker": "defensive_v1",
+            "chunker": "defensive_v2",
             "block_count": len(blocks),
             **(metadata or {}),
         },
@@ -683,12 +960,6 @@ def blocks_to_chunk(
 
 
 def chunk_document(document: CanonicalDocument) -> list[DocumentChunk]:
-    """Create chunks using structure first, then safer fallbacks.
-
-    This is intentionally defensive: clean SOPs should benefit from headings,
-    while messy public PDFs still produce usable page/length chunks.
-    """
-
     table_structured = sum(block.block_type == BlockType.TABLE for block in document.blocks) >= 2
     is_pdf = Path(document.source_path).suffix.lower() == ".pdf"
     has_pdf_major_headings = any(
@@ -702,12 +973,11 @@ def chunk_document(document: CanonicalDocument) -> list[DocumentChunk]:
         drafts = group_by_table(document)
     else:
         drafts = group_by_page(document)
-    # Table sections in these DOCX knowledge articles are meaningful even when a
-    # section is short. Merging them would make source citations misleading.
+
     if not table_structured and not (is_pdf and has_pdf_major_headings):
         drafts = merge_tiny_drafts(drafts)
-    chunks: list[DocumentChunk] = []
 
+    chunks: list[DocumentChunk] = []
     for draft in drafts:
         table_groups = split_product_price_table(draft)
         if table_groups is not None:

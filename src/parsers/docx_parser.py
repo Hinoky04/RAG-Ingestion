@@ -18,7 +18,7 @@ class DOCXParser(BaseParser):
     """Parse DOCX paragraphs and tables in their original document order."""
 
     parser_name = "python-docx"
-    parser_version = "v1.2"
+    parser_version = "v1.5"
 
     numbered_heading_pattern = re.compile(r"^\d+(?:\.\d+)*\.?\s+\S+")
 
@@ -70,13 +70,26 @@ class DOCXParser(BaseParser):
             links.append({"text": label, "url": url})
             seen_urls.add(url)
 
-        annotations = [
-            url if url in text else f"{link['text']}: {url}"
-            for link in links
-            for url in [link["url"]]
-        ]
-        if annotations:
-            text = f"{text}\nLinks: {' | '.join(annotations)}".strip()
+        # Keep a URL with the sentence where its hyperlink label appeared.
+        # A separate "Links:" line becomes an unrelated retrieval bullet and
+        # obscures the fact that the URL qualifies the preceding statement.
+        search_from = 0
+        for link in links:
+            url = link["url"]
+            if url in text:
+                continue
+            label = link["text"]
+            position = text.find(label, search_from) if label else -1
+            if position >= 0:
+                end = position + len(label)
+                text = f"{text[:end]} ({url}){text[end:]}"
+                search_from = end + len(url) + 3
+            else:
+                text = f"{text}\n{label}: {url}".strip()
+
+        style_name = paragraph.style.name if paragraph.style is not None else ""
+        if text and style_name.lower().startswith("list") and not text.startswith(("- ", "• ", "* ")):
+            text = f"- {text}"
 
         return text, links
 
@@ -96,7 +109,11 @@ class DOCXParser(BaseParser):
             if len(cells) == 2 and cells[0] == cells[1]:
                 rows.append(cells[0])
             elif len(cells) == 2:
-                rows.append(f"{cells[0]}: {cells[1]}")
+                value_lines = [line for line in cells[1].splitlines() if line.strip()]
+                if len(value_lines) > 1 and all(line.lstrip().startswith("-") for line in value_lines):
+                    rows.append(f"{cells[0]}:\n{cells[1]}")
+                else:
+                    rows.append(f"{cells[0]}: {cells[1]}")
             else:
                 rows.append(" | ".join(cells))
 
@@ -164,6 +181,92 @@ class DOCXParser(BaseParser):
 
         return structures
 
+    def table_anchor(self, table: Table, part) -> str:
+        """Return a short visible label for a nested table without inferring scope."""
+
+        labels: list[str] = []
+        for row in table.rows[:2]:
+            for cell in row.cells:
+                text, _ = self.direct_cell_text(cell, part)
+                label = " ".join(text.split())
+                if label and label not in labels:
+                    labels.append(label)
+        return " | ".join(labels[:3])[:240] or "Table"
+
+    def table_fragments(
+        self,
+        table: Table,
+        part,
+        table_path: str = "root",
+        parent_table_path: str | None = None,
+    ) -> list[dict[str, object]]:
+        """Preserve paragraph/table order inside DOCX cells as additive metadata."""
+
+        fragments: list[dict[str, object]] = []
+        seen_cells: set[int] = set()
+        for row_index, row in enumerate(table.rows, start=1):
+            for cell_index, cell in enumerate(row.cells, start=1):
+                cell_identity = id(cell._tc)
+                if cell_identity in seen_cells:
+                    continue
+                seen_cells.add(cell_identity)
+
+                cell_path = f"{table_path}.r{row_index}c{cell_index}"
+                direct_fragments: list[dict[str, object]] = []
+                nested_tables: list[tuple[dict[str, object], Table, str]] = []
+                nested_index = 0
+                for xml_ordinal, element in enumerate(cell._tc.iterchildren(), start=1):
+                    if isinstance(element, CT_P):
+                        paragraph = Paragraph(element, cell)
+                        text, _ = self.paragraph_text_and_links(paragraph, part)
+                        if not text:
+                            continue
+                        direct_fragments.append(
+                            {
+                                "kind": "paragraph",
+                                "table_path": table_path,
+                                "parent_table_path": parent_table_path,
+                                "cell_path": cell_path,
+                                "xml_ordinal": xml_ordinal,
+                                "text": text,
+                                "style": paragraph.style.name if paragraph.style is not None else "unknown",
+                            }
+                        )
+                    elif isinstance(element, CT_Tbl):
+                        nested_index += 1
+                        nested_path = f"{cell_path}.table{nested_index}"
+                        nested_table = Table(element, cell)
+                        fragment = {
+                            "kind": "nested_table",
+                            "table_path": nested_path,
+                            "parent_table_path": table_path,
+                            "cell_path": cell_path,
+                            "xml_ordinal": xml_ordinal,
+                            "anchor": self.table_anchor(nested_table, part),
+                        }
+                        direct_fragments.append(fragment)
+                        nested_tables.append((fragment, nested_table, nested_path))
+
+                for index, fragment in enumerate(direct_fragments):
+                    if fragment["kind"] != "paragraph":
+                        continue
+                    previous = next(
+                        (item for item in reversed(direct_fragments[:index]) if item["kind"] == "nested_table"), None
+                    )
+                    following = next(
+                        (item for item in direct_fragments[index + 1 :] if item["kind"] == "nested_table"), None
+                    )
+                    if previous is not None:
+                        fragment["previous_table_anchor"] = previous["anchor"]
+                    if following is not None:
+                        fragment["next_table_anchor"] = following["anchor"]
+
+                fragments.extend(direct_fragments)
+                for _, nested_table, nested_path in nested_tables:
+                    fragments.extend(self.table_fragments(nested_table, part, nested_path, table_path))
+
+        return fragments
+
     def iter_body_items(self, doc: Document):
         """Yield paragraphs and tables in the order users see them in Word."""
 
@@ -198,6 +301,8 @@ class DOCXParser(BaseParser):
                 if not text:
                     continue
 
+                fragments = self.table_fragments(item, doc.part)
+
                 block_type = BlockType.TABLE
                 heading_level = None
                 metadata = {
@@ -205,6 +310,7 @@ class DOCXParser(BaseParser):
                     "table_index": table_index,
                     "possible_table": True,
                     "table_structures": self.table_structures(item, doc.part),
+                    "table_fragments": fragments,
                 }
                 if links:
                     metadata["hyperlinks"] = links

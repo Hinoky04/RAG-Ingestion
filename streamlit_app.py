@@ -5,6 +5,7 @@ import os
 import re
 from html import escape
 from pathlib import Path
+from urllib.parse import urlparse
 
 import streamlit as st
 
@@ -17,7 +18,9 @@ from src.workspace.service import WorkspaceService
 DEFAULT_COLLECTION = DEFAULT_COLLECTION_NAME
 STATUS_LABELS = {
     "registered": "Registered",
-    "validated": "Ready to index",
+    "review_ready": "Ready for review",
+    "approved": "Approved for indexing",
+    "validated": "Approved for indexing",
     "low_confidence": "Needs attention",
     "indexed": "Indexed",
     "failed": "Failed",
@@ -69,6 +72,8 @@ def inject_styles() -> None:
         .metric-note { color: var(--muted); font-size: 0.73rem; margin-top: 0.18rem; white-space: nowrap; }
         .status { border-radius: 999px; display: inline-block; font-size: 0.7rem; font-weight: 800; padding: 0.27rem 0.58rem; }
         .status-registered { background: #eef2f7; color: #536174; }
+        .status-review_ready { background: #eef4ff; color: #2255be; }
+        .status-approved { background: #e8f0ff; color: #1748c2; }
         .status-validated { background: #e8f0ff; color: #2255be; }
         .status-low_confidence { background: #fff3db; color: var(--amber); }
         .status-indexed { background: #e5f6ef; color: var(--green); }
@@ -124,6 +129,7 @@ def inject_styles() -> None:
         .chunk-meta { color: var(--muted); font-size: 0.73rem; margin-top: 0.24rem; }
         .chunk-preview { color: var(--ink); font-size: 0.79rem; line-height: 1.55; margin-top: 0.46rem; }
         .chunk-full-text { background: #f8faff; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-family: 'DM Mono', monospace; font-size: 0.73rem; line-height: 1.55; margin-top: 0.35rem; padding: 0.7rem 0.8rem; white-space: pre-wrap; }
+        .chunk-full-text a, .retrieval-text a { color:var(--blue); text-decoration:underline; text-underline-offset:2px; }
         [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] details { background:#f8faff; border:1px solid #ccd8ea; border-radius:8px; overflow:hidden; }
         [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] summary { color:var(--ink); font-size:.79rem; font-weight:750; padding:.68rem .82rem; }
         [class*="st-key-chunk-evidence-"] [data-testid="stExpander"] summary:hover { background:#f2f6fc; }
@@ -305,13 +311,13 @@ def document_label(document) -> str:
 def metric_card(label: str, value: str | int, note: str) -> None:
     tone = {
         "Documents": "documents",
-        "Ready to index": "ready",
+        "Manual gate": "ready",
         "Indexed": "indexed",
         "Needs attention": "attention",
     }.get(label, "documents")
     icons = {
         "Documents": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><path d='M6 3h9l3 3v15H6z'/><path d='M15 3v4h4M9 11h6M9 15h6'/></svg>",
-        "Ready to index": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><circle cx='12' cy='12' r='9'/><path d='m8.5 12 2.2 2.2 4.8-5'/></svg>",
+        "Manual gate": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><circle cx='12' cy='12' r='9'/><path d='m8.5 12 2.2 2.2 4.8-5'/></svg>",
         "Indexed": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><ellipse cx='12' cy='5' rx='7' ry='3'/><path d='M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6'/></svg>",
         "Needs attention": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><path d='M12 3 2.8 19h18.4z'/><path d='M12 9v4M12 16.5h.01'/></svg>",
     }
@@ -340,13 +346,37 @@ def overview_action_label(status: str) -> str:
 
 
 def overview_chunk_label(status: str, count: int) -> str:
-    if status in {"validated", "indexed"}:
+    if status in {"review_ready", "approved", "validated", "indexed"}:
         return f"{count} validated chunks"
     return f"{count} chunks"
 
 
 def normalize_search_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip().casefold()
+
+
+URL_PATTERN = re.compile(r"https?://[^\s<>()\[\]{}\"']+", re.IGNORECASE)
+URL_TRAILING_PUNCTUATION = ".,;:!?)]}\"'"
+
+
+def evidence_html(text: str) -> str:
+    """Escape evidence text while rendering only verified HTTP(S) URLs as links."""
+
+    rendered: list[str] = []
+    cursor = 0
+    for match in URL_PATTERN.finditer(text):
+        url = match.group(0).rstrip(URL_TRAILING_PUNCTUATION)
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            continue
+        start, end = match.span()
+        rendered.append(escape(text[cursor:start]))
+        rendered.append(
+            f'<a href="{escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">{escape(url)}</a>'
+        )
+        cursor = start + len(url)
+    rendered.append(escape(text[cursor:]))
+    return "".join(rendered)
 
 
 def clear_chunk_search(search_key: str) -> None:
@@ -375,6 +405,15 @@ def open_existing_result(document_id: str, notice: str) -> None:
     st.session_state.pop("duplicate_document_id", None)
     st.session_state.pop("duplicate_notice", None)
     st.session_state["active_page"] = "Result review"
+
+
+def render_source_download_button(service: WorkspaceService, document_id: str, key: str, label: str = "Download source") -> None:
+    try:
+        file_name, file_bytes, mime = service.source_download(document_id)
+    except Exception as exc:
+        st.caption(f"Source unavailable: {exc}")
+        return
+    st.download_button(label, data=file_bytes, file_name=file_name, mime=mime, key=key)
 
 
 def render_navigation() -> str:
@@ -414,7 +453,7 @@ def render_topbar() -> None:
 def render_overview(service: WorkspaceService) -> None:
     stats = service.workspace.stats()
     documents = service.workspace.list_documents()
-    ready = stats.get("validated", 0)
+    ready = stats.get("review_ready", 0) + stats.get("approved", 0) + stats.get("validated", 0)
     attention = stats.get("low_confidence", 0) + stats.get("failed", 0)
 
     st.markdown("<div class='eyebrow'>Ingestion workspace</div>", unsafe_allow_html=True)
@@ -428,7 +467,7 @@ def render_overview(service: WorkspaceService) -> None:
     with columns[0]:
         metric_card("Documents", stats.get("total", 0), "Tracked documents")
     with columns[1]:
-        metric_card("Ready to index", ready, "Validated sets")
+        metric_card("Manual gate", ready, "Awaiting review or approval")
     with columns[2]:
         metric_card("Indexed", stats.get("indexed", 0), "Available for retrieval")
     with columns[3]:
@@ -531,6 +570,11 @@ def render_upload(service: WorkspaceService) -> None:
     if not submit or uploaded_file is None:
         return
     file_bytes = uploaded_file.getvalue()
+    try:
+        service.validate_upload(uploaded_file.name, file_bytes)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
     existing_document = service.find_document_by_checksum(file_bytes)
     if existing_document is not None:
         st.session_state["duplicate_document_id"] = existing_document.document_id
@@ -598,10 +642,11 @@ def render_document_history(service: WorkspaceService) -> None:
             placeholder="Search by filename",
             key="history-search",
         )
-        filter_options = ["All", "Ready to index", "Indexed", "Needs attention", "Failed"]
+        filter_options = ["All", "Ready for review", "Approved", "Indexed", "Needs attention", "Failed"]
         selected_filter = controls[1].selectbox("Status filter", filter_options, key="history-status")
         status_filter = {
-            "Ready to index": "validated",
+            "Ready for review": "review_ready",
+            "Approved": "approved",
             "Indexed": "indexed",
             "Needs attention": "low_confidence",
             "Failed": "failed",
@@ -760,35 +805,47 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
             unsafe_allow_html=True,
         )
         st.markdown("<div class='document-toolbar'></div>", unsafe_allow_html=True)
-        left_actions, spacer, right_action = st.columns([1.55, 2.8, 1.0], vertical_alignment="center")
+        left_actions, spacer, right_action = st.columns([2.4, 2.0, 1.35], vertical_alignment="center")
         with left_actions:
-            process_col, detail_col = st.columns([1, 1], gap="small")
+            process_col, detail_col, download_col = st.columns([1, 1, 1.05], gap="small")
             if process_col.button("Re-process", key=f"process-{document.document_id}"):
                 try:
                     service.ingest_document(document.document_id)
                 except Exception as exc:
                     st.error(f"Processing failed: {exc}")
                 else:
-                    st.success("Document re-processed. Index again to replace its vectors.")
+                    st.success("Document re-processed. Review and approve again before indexing.")
                     st.rerun()
             with detail_col.popover("Run details"):
                 st.caption(f"Source: `{document.source_path}`")
                 st.caption(f"Checksum: `{document.checksum}`")
                 st.caption(f"Collection: `{document.collection_name or DEFAULT_COLLECTION}`")
-        index_label = f"Index {len(chunks)} chunks" if chunks else "Index validated chunks"
-        if right_action.button(
-            index_label,
-            key=f"index-{document.document_id}",
-            disabled=document.status != "validated",
-            type="primary",
-        ):
-            try:
-                count = service.index_document(document.document_id, DEFAULT_COLLECTION, DEFAULT_CHROMA_DIR)
-            except Exception as exc:
-                st.error(f"Indexing failed: {exc}")
-            else:
-                st.success(f"Indexed {count} chunks. Older vectors for this document were replaced.")
-                st.rerun()
+            with download_col:
+                render_source_download_button(service, document.document_id, f"download-source-review-{document.document_id}")
+        if document.status == "review_ready":
+            if right_action.button("Approve for indexing", key=f"approve-{document.document_id}", type="primary"):
+                try:
+                    service.approve_document(document.document_id)
+                except Exception as exc:
+                    st.error(f"Approval failed: {exc}")
+                else:
+                    st.success("Document approved. You can index it now.")
+                    st.rerun()
+        else:
+            index_label = f"Index {len(chunks)} chunks" if chunks else "Index approved chunks"
+            if right_action.button(
+                index_label,
+                key=f"index-{document.document_id}",
+                disabled=document.status != "approved",
+                type="primary",
+            ):
+                try:
+                    count = service.index_document(document.document_id, DEFAULT_COLLECTION, DEFAULT_CHROMA_DIR)
+                except Exception as exc:
+                    st.error(f"Indexing failed: {exc}")
+                else:
+                    st.success(f"Indexed {count} chunks. Older vectors for this document were replaced.")
+                    st.rerun()
 
     if document.error_message:
         st.error(document.error_message)
@@ -797,14 +854,18 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
     with tabs[0]:
         validation_summary = (validation or {}).get("summary", {})
         validation_events = (validation or {}).get("events", [])
-        validation_run = (validation or {}).get("run_status") in {"validated", "low_confidence", "failed"}
+        validation_run = (validation or {}).get("run_status") in {"review_ready", "approved", "validated", "low_confidence", "failed"}
         if document.status == "failed":
             panel_class, panel_title, panel_copy = "failed", "Validation failed", "This document cannot be indexed until processing succeeds."
         elif document.status == "low_confidence" or validation_events:
             panel_class, panel_title, panel_copy = "attention", "Validation requires attention", "Review the recorded warnings before deciding whether to re-process."
+        elif document.status == "review_ready":
+            panel_class, panel_title, panel_copy = "passed", "Awaiting manual review", "Automated parsing passed. Approve this document before indexing."
+        elif document.status == "approved":
+            panel_class, panel_title, panel_copy = "passed", "Approved for indexing", "Manual review is complete. This document can now be indexed into ChromaDB."
         else:
             panel_class, panel_title = "passed", "Validation passed"
-            panel_copy = f"{len(chunks)} validated chunks are ready to be indexed into ChromaDB." if document.status == "validated" else "This document has completed validation."
+            panel_copy = "This document has completed validation and indexing."
         st.markdown(
             f"<div class='validation-panel {panel_class}'><div class='validation-panel-title'>{panel_title}</div>"
             f"<div class='validation-panel-copy'>{panel_copy}</div></div>",
@@ -878,7 +939,7 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
                         unsafe_allow_html=True,
                     )
                     with st.expander(f"View full chunk {chunk_number:02d}"):
-                        st.markdown(f"<div class='chunk-full-text'>{escape(full_text)}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='chunk-full-text'>{evidence_html(full_text)}</div>", unsafe_allow_html=True)
 
     with tabs[2]:
         markdown_preview, markdown_source = st.tabs(["Preview", "Source"])
@@ -986,7 +1047,7 @@ def render_retrieval(service: WorkspaceService) -> None:
         run = st.button("Run retrieval", type="primary")
     if indexed_count == 0:
         st.markdown(
-            "<div class='retrieval-empty'><strong>No indexed documents yet.</strong><br>Review and index a validated document before verifying retrieval.</div>",
+            "<div class='retrieval-empty'><strong>No indexed documents yet.</strong><br>Approve and index a reviewed document before verifying retrieval.</div>",
             unsafe_allow_html=True,
         )
     if not run:
@@ -1010,7 +1071,7 @@ def render_retrieval(service: WorkspaceService) -> None:
     )
     for position, result in enumerate(results, start=1):
         with st.container(border=True):
-            header, score = st.columns([5, 1], vertical_alignment="center")
+            header, score, download = st.columns([4.5, 1, 1.35], vertical_alignment="center")
             header.markdown(
                 f"<div class='retrieval-rank'>Result {position:02d}</div>"
                 f"<div class='retrieval-file'>{escape(result.file_name)}</div>"
@@ -1018,7 +1079,14 @@ def render_retrieval(service: WorkspaceService) -> None:
                 unsafe_allow_html=True,
             )
             score.markdown(f"<div style='text-align:right'><span class='score-pill'>{result.score:.2f}</span></div>", unsafe_allow_html=True)
-            st.markdown(f"<div class='retrieval-text'>{escape(result.text)}</div>", unsafe_allow_html=True)
+            with download:
+                render_source_download_button(
+                    service,
+                    result.document_id,
+                    f"download-source-retrieval-{position}-{result.document_id}",
+                    label="Download file",
+                )
+            st.markdown(f"<div class='retrieval-text'>{evidence_html(result.text)}</div>", unsafe_allow_html=True)
 
 
 def main() -> None:

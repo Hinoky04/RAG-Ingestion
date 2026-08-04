@@ -33,6 +33,29 @@ class PostgreSQLWorkspace:
     def _init_db(self) -> None:
         with self.connect() as connection, connection.cursor() as cursor:
             cursor.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+            self._replace_documents_status_constraint(cursor)
+
+    def _replace_documents_status_constraint(self, cursor) -> None:
+        allowed = ("registered", "review_ready", "approved", "validated", "low_confidence", "indexed", "failed")
+        existing = cursor.execute(
+            """
+            SELECT conname
+            FROM pg_constraint
+            WHERE conrelid = 'documents'::regclass
+              AND contype = 'c'
+              AND pg_get_constraintdef(oid) LIKE 'CHECK ((status = ANY (%'
+            """
+        ).fetchall()
+        for row in existing:
+            cursor.execute(f'ALTER TABLE documents DROP CONSTRAINT IF EXISTS "{row["conname"]}"')
+        values_sql = ", ".join(f"'{value}'" for value in allowed)
+        cursor.execute(
+            f"""
+            ALTER TABLE documents
+            ADD CONSTRAINT documents_status_check
+            CHECK (status IN ({values_sql}))
+            """
+        )
 
     def upsert_document(self, record: DocumentRecord, status: str = "registered") -> str:
         now = datetime.now(timezone.utc)
@@ -166,7 +189,28 @@ class PostgreSQLWorkspace:
                 (document_id, json.dumps({"collection_name": collection_name}), now),
             )
 
-    def mark_unindexed(self, document_id: str, status: str = "validated") -> None:
+    def mark_approved(self, document_id: str) -> None:
+        now = datetime.now(timezone.utc)
+        with self.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE documents
+                   SET status = 'approved', error_message = NULL, updated_at = %s
+                   WHERE document_id = %s""",
+                (now, document_id),
+            )
+            cursor.execute(
+                """UPDATE document_versions
+                   SET status = 'approved'
+                   WHERE document_id = %s AND is_current = true""",
+                (document_id,),
+            )
+            cursor.execute(
+                """INSERT INTO processing_runs (document_id, run_status, validation_summary, created_at)
+                   VALUES (%s, 'approved', %s::jsonb, %s)""",
+                (document_id, json.dumps({"action": "manual_approval"}), now),
+            )
+
+    def mark_unindexed(self, document_id: str, status: str = "approved") -> None:
         now = datetime.now(timezone.utc)
         with self.connect() as connection, connection.cursor() as cursor:
             cursor.execute(
@@ -176,6 +220,12 @@ class PostgreSQLWorkspace:
                 (status, now, document_id),
             )
             cursor.execute("UPDATE chunks SET indexed_at = NULL WHERE document_id = %s", (document_id,))
+            cursor.execute(
+                """UPDATE document_versions
+                   SET status = %s
+                   WHERE document_id = %s AND is_current = true""",
+                (status, document_id),
+            )
             cursor.execute(
                 """INSERT INTO processing_runs (document_id, run_status, validation_summary, created_at)
                    VALUES (%s, %s, %s::jsonb, %s)""",

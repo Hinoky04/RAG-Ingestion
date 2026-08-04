@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS documents (
     checksum TEXT NOT NULL,
     document_type TEXT NOT NULL,
     version TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('registered', 'validated', 'low_confidence', 'indexed', 'failed')),
+    status TEXT NOT NULL CHECK (status IN ('registered', 'review_ready', 'approved', 'validated', 'low_confidence', 'indexed', 'failed')),
     parser_name TEXT,
     parser_version TEXT,
     collection_name TEXT,
