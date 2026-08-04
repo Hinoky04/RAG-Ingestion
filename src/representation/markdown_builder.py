@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.representation.schemas import BlockType, CanonicalDocument, ParsedBlock
+from src.representation.schemas import BlockType, CanonicalDocument, DocumentChunk, ParsedBlock
 
 
 def block_to_markdown(block: ParsedBlock) -> str:
@@ -43,4 +43,16 @@ def build_markdown(document: CanonicalDocument) -> str:
         lines.append(block_to_markdown(block))
         lines.append("")
 
+    return "\n".join(lines).strip() + "\n"
+
+
+def build_chunk_markdown(document: CanonicalDocument, chunks: list[DocumentChunk]) -> str:
+    """Build the review artifact from the finalized evidence sent to indexing."""
+    lines = [
+        f"# {document.file_name}", "", f"- Document ID: `{document.document_id}`",
+        f"- Type: `{document.document_type}`", f"- Source: `{document.source_path}`",
+        f"- Validated chunks: `{len(chunks)}`", "", "---", "", "## Validated evidence chunks",
+    ]
+    for index, chunk in enumerate(chunks, start=1):
+        lines.extend(["", f"### Chunk {index:02d} — {chunk.section_path}", "", "```text", chunk.text, "```"])
     return "\n".join(lines).strip() + "\n"

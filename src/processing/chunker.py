@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 from pathlib import Path
 
 from src.representation.schemas import BlockType, CanonicalDocument, DocumentChunk, ParsedBlock
@@ -223,6 +224,23 @@ def pages_for(blocks: list[ParsedBlock]) -> tuple[int | None, int | None]:
     return min(pages), max(pages)
 
 
+def source_anchor_for(blocks: list[ParsedBlock]) -> str:
+    """Create a format-neutral source locator without changing chunk evidence."""
+    anchors: list[str] = []
+    for block in blocks:
+        if block.page_number is not None:
+            anchor = f"page:{block.page_number}"
+        elif "paragraph_index" in block.metadata:
+            anchor = f"paragraph:{block.metadata['paragraph_index']}"
+        elif "table_index" in block.metadata:
+            anchor = f"table:{block.metadata['table_index']}"
+        else:
+            continue
+        if anchor not in anchors:
+            anchors.append(anchor)
+    return ", ".join(anchors)
+
+
 def parent_table_segment_output(
     draft: ChunkDraft,
     rows: list[list[str]],
@@ -440,8 +458,11 @@ def blocks_to_chunk(
     clean_section_path = sanitize_section_path(section_path)
     chunk_section = clean_section_path if split_index is None else f"{clean_section_path} (part {split_index + 1})"
     cleaned_text = sanitize_chunk_text(text, clean_section_path)
+    chunk_identity = "\x1f".join([document.document_id, chunk_section, cleaned_text])
+    chunk_id = f"chunk_{hashlib.sha256(chunk_identity.encode('utf-8')).hexdigest()[:20]}"
 
     return DocumentChunk(
+        chunk_id=chunk_id,
         document_id=document.document_id,
         document_type=document.document_type,
         source_path=document.source_path,
@@ -455,6 +476,9 @@ def blocks_to_chunk(
         metadata={
             "chunker": "defensive_v2",
             "block_count": len(blocks),
+            "source_checksum": str(document.metadata.get("source_checksum", "")),
+            "source_key": str(document.metadata.get("source_key", Path(document.file_name).stem.casefold())),
+            "source_anchor": source_anchor_for(blocks),
             **(metadata or {}),
         },
     )

@@ -7,6 +7,7 @@ from src.parsers.base_parser import BaseParser
 from src.pipeline.common import parser_for, save_chunks, save_document, save_markdown
 from src.processing.chunker import chunk_document
 from src.processing.cleaner import clean_document
+from src.processing.quality import ChunkQualityReport, assess_chunks
 from src.representation.schemas import CanonicalDocument, DocumentChunk, DocumentRecord
 
 
@@ -24,6 +25,7 @@ class IngestionOutcome:
     parser_name: str
     parser_version: str
     artifacts: IngestionArtifacts
+    quality: ChunkQualityReport | None = None
 
 
 def ingest_record(
@@ -38,16 +40,18 @@ def ingest_record(
         raise ValueError(f"Unsupported file type: {record.file_type}")
 
     document = clean_document(selected_parser.parse(record))
+    document = document.model_copy(update={"metadata": {**document.metadata, "source_checksum": record.checksum}})
     document_path = save_document(document, output_dir)
+
+    chunks = chunk_document(document) if markdown_dir is not None or chunk_dir is not None else []
+    quality = assess_chunks(chunks)
 
     markdown_path: Path | None = None
     if markdown_dir is not None:
-        markdown_path = save_markdown(document, markdown_dir)
+        markdown_path = save_markdown(document, markdown_dir, chunks)
 
-    chunks: list[DocumentChunk] = []
     chunk_path: Path | None = None
     if chunk_dir is not None:
-        chunks = chunk_document(document)
         chunk_path = save_chunks(chunks, document.document_id, chunk_dir)
 
     return IngestionOutcome(
@@ -60,4 +64,5 @@ def ingest_record(
             markdown_path=markdown_path,
             chunk_path=chunk_path,
         ),
+        quality=quality,
     )

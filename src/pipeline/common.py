@@ -8,7 +8,7 @@ from pydantic import TypeAdapter
 from src.parsers.base_parser import BaseParser
 from src.parsers.docx_parser import DOCXParser
 from src.parsers.pdf_parser import PDFParser
-from src.representation.markdown_builder import build_markdown
+from src.representation.markdown_builder import build_chunk_markdown, build_markdown
 from src.representation.schemas import CanonicalDocument, DocumentChunk, DocumentRecord
 
 
@@ -33,10 +33,11 @@ def save_document(document: CanonicalDocument, output_dir: str | Path) -> Path:
     return output_path
 
 
-def save_markdown(document: CanonicalDocument, output_dir: str | Path) -> Path:
+def save_markdown(document: CanonicalDocument, output_dir: str | Path, chunks: list[DocumentChunk] | None = None) -> Path:
     output_path = Path(output_dir) / f"{document.document_id}.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(build_markdown(document), encoding="utf-8")
+    markdown = build_chunk_markdown(document, chunks) if chunks is not None else build_markdown(document)
+    output_path.write_text(markdown, encoding="utf-8")
     return output_path
 
 
