@@ -1,6 +1,6 @@
-from src.processing.chunker import chunk_document
-from src.processing.quality import assess_chunks
-from src.representation.schemas import BlockType, CanonicalDocument, ParsedBlock
+from sourcecode.processing.chunker import chunk_document
+from sourcecode.processing.quality import assess_chunks
+from sourcecode.representation.schemas import BlockType, CanonicalDocument, ParsedBlock
 
 
 def test_chunk_identity_and_quality_are_stable_without_changing_evidence():

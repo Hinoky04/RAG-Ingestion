@@ -1,0 +1,7 @@
+* text=auto
+
+# Preserve the exact delivered bytes checked by the submission manifest.
+sourcecode/** -text whitespace=cr-at-eol
+/streamlit_app.py -text whitespace=cr-at-eol
+/db/schema.sql -text whitespace=cr-at-eol
+*.pdf -text

@@ -1,64 +1,65 @@
-# Python
+# Python and environments
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
 .venv/
 venv/
 env/
 ENV/
+.Python
 .env
 .env.*
 !.env.example
 
-# Build and packaging
-build/
-dist/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Local data and generated artifacts
-data/raw/*
-data/processed/*
-data/samples/*
+# Local data, databases, models and retained submissions
+data/
+Example-Dataset/
+Backup/
 Backupfolder/
+Research_Intern Submission/
 KB Articles/
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/samples/.gitkeep
-!data/samples/evaluation_queries.example.json
-
-# Vector databases and model caches
+.cache/
+models/
+model_cache/
 chroma/
 chroma_db/
 qdrant_storage/
 faiss_index/
-models/
-model_cache/
-.cache/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.dump
+*.backup
+*.zip
 
-# Logs and local outputs
-logs/
-*.log
+# Generated output and test artifacts
+output/
 outputs/
 tmp/
 temp/
+logs/
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+junit*.xml
+*test_results*.xml
+build/
+dist/
+*.egg-info/
+.ipynb_checkpoints/
 
-# OS and editor files
+# Editable local reports and editor/agent files
+docs/*.docx
+~$*
 .DS_Store
 Thumbs.db
 desktop.ini
 .vscode/
 .idea/
-
-# Local agent/tooling metadata
 .agents/
 .codex/

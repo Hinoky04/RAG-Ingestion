@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 
-from src.parsers.base_parser import BaseParser
-from src.pipeline.ingest_service import ingest_record
-from src.representation.schemas import BlockType, CanonicalDocument, DocumentRecord, ParsedBlock
+from sourcecode.parsers.base_parser import BaseParser
+from sourcecode.pipeline.ingest_service import ingest_record
+from sourcecode.representation.schemas import BlockType, CanonicalDocument, DocumentRecord, ParsedBlock
 
 
 class FakeParser(BaseParser):

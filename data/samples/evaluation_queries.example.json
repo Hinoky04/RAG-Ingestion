@@ -1,9 +1,0 @@
-[
-  {
-    "id": "document_fact_01",
-    "collection": "rag_ingestion",
-    "query": "Replace this with a question answered by one of your local documents.",
-    "expected_keywords": ["replace", "with", "expected", "terms"],
-    "notes": "Copy this file to evaluation_queries.local.json and add real local-document cases."
-  }
-]

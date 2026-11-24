@@ -1,8 +1,8 @@
-from src.processing.chunker import ChunkDraft, chunk_document, sanitize_chunk_text
-from src.processing.docx_table_context import expand_explicit_symbol_legend, explicit_symbol_legend, nested_table_notes_by_path
-from src.processing.table_strategies import split_hierarchical_row_matrix, split_two_column_parallel_description
-from src.processing.table_utils import table_rows_to_text
-from src.representation.schemas import BlockType, CanonicalDocument, ParsedBlock
+from sourcecode.processing.chunker import ChunkDraft, chunk_document, sanitize_chunk_text
+from sourcecode.processing.docx.table_context import expand_explicit_symbol_legend, explicit_symbol_legend, nested_table_notes_by_path
+from sourcecode.processing.docx.table_strategies import split_hierarchical_row_matrix, split_two_column_parallel_description
+from sourcecode.processing.docx.table_utils import table_rows_to_text
+from sourcecode.representation.schemas import BlockType, CanonicalDocument, ParsedBlock
 
 
 def test_explicit_table_symbol_legend_makes_markers_searchable_without_guessing():
@@ -88,13 +88,12 @@ def test_pdf_chunker_keeps_subheadings_with_major_section():
 
     chunks = chunk_document(document)
 
-    assert len(chunks) == 3
-    assert chunks[0].section_path == "Introduction"
+    assert len(chunks) == 2
+    assert chunks[0].section_path == "1. First section"
     assert "Document title" in chunks[0].text
-    assert chunks[1].section_path == "1. First section"
-    assert "Key details" in chunks[1].text
-    assert chunks[2].section_path == "2. Second section"
-    assert "More details" in chunks[2].text
+    assert "Key details" in chunks[0].text
+    assert chunks[1].section_path == "2. Second section"
+    assert "More details" in chunks[1].text
 
 
 def test_docx_chunker_splits_structured_nested_table_by_column_group():

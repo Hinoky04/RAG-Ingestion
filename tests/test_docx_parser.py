@@ -4,9 +4,9 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from src.parsers.docx_parser import DOCXParser
-from src.processing.chunker import chunk_document
-from src.representation.schemas import BlockType, CanonicalDocument, DocumentRecord, ParsedBlock
+from sourcecode.parsers.docx_parser import DOCXParser
+from sourcecode.processing.chunker import chunk_document
+from sourcecode.representation.schemas import BlockType, CanonicalDocument, DocumentRecord, ParsedBlock
 
 
 def add_hyperlink(paragraph, label: str, url: str) -> None:
@@ -135,7 +135,7 @@ def test_chunker_splits_large_price_table_by_product():
 
     assert len(product_chunks) == 20
     first = product_chunks[0]
-    assert first.section_path == "Product details · Product 0"
+    assert first.section_path == "Product details - Product 0"
     assert header in first.text
     assert "Product: Product 0" in first.text
     assert "CD60" in first.text and "CD63" in first.text

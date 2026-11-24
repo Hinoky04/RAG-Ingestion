@@ -1,5 +1,5 @@
-from src.representation.markdown_builder import build_markdown
-from src.representation.schemas import BlockType, CanonicalDocument, ParsedBlock
+from sourcecode.representation.markdown_builder import build_markdown
+from sourcecode.representation.schemas import BlockType, CanonicalDocument, ParsedBlock
 
 
 def test_markdown_builder_preserves_table_rows_in_a_fenced_block():

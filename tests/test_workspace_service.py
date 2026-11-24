@@ -1,17 +1,17 @@
 from datetime import datetime, timezone
 
-from src.pipeline.ingest_service import IngestionArtifacts, IngestionOutcome
-from src.representation.schemas import CanonicalDocument, DocumentChunk, DocumentRecord, ParsedBlock
-from src.workspace.models import WorkspaceDocument
-from src.workspace.service import WorkspaceService, next_version_label
+from sourcecode.pipeline.ingest_service import IngestionArtifacts, IngestionOutcome
+from sourcecode.representation.schemas import CanonicalDocument, DocumentChunk, DocumentRecord, ParsedBlock
+from sourcecode.workspace.models import WorkspaceDocument
+from sourcecode.workspace.service import WorkspaceService, next_version_label
 
 
-def test_next_version_label_increments_decimal_versions():
-    assert next_version_label([]) == "v1"
+def test_next_version_label_increments_numeric_versions():
+    assert next_version_label([]) == "1"
     assert next_version_label(["v1"]) == "1.1"
     assert next_version_label(["v1", "1.1", "1.2"]) == "1.3"
     assert next_version_label(["1.8"]) == "1.9"
-    assert next_version_label(["1.9"]) == "2.0"
+    assert next_version_label(["1.9", "2"]) == "2.1"
 
 
 def test_workspace_service_registers_validates_and_indexes(tmp_path, monkeypatch):
@@ -54,6 +54,9 @@ def test_workspace_service_registers_validates_and_indexes(tmp_path, monkeypatch
             document.status = "indexed"
             document.collection_name = collection_name
 
+        def mark_approved(self, document_id):
+            self.documents[document_id].status = "approved"
+
         def mark_unindexed(self, document_id, status="validated"):
             document = self.documents[document_id]
             document.status = status
@@ -62,7 +65,7 @@ def test_workspace_service_registers_validates_and_indexes(tmp_path, monkeypatch
         def delete_document(self, document_id):
             self.documents.pop(document_id, None)
 
-    monkeypatch.setattr("src.workspace.service.PostgreSQLWorkspace", FakeWorkspace)
+    monkeypatch.setattr("sourcecode.workspace.service.PostgreSQLWorkspace", FakeWorkspace)
     source = tmp_path / "article.pdf"
     source.write_bytes(b"%PDF-1.4")
     service = WorkspaceService(database_url="postgresql://test", document_dir=tmp_path / "documents", markdown_dir=tmp_path / "markdown", chunk_dir=tmp_path / "chunks")
@@ -78,12 +81,16 @@ def test_workspace_service_registers_validates_and_indexes(tmp_path, monkeypatch
         chunks=[chunk], parser_name="fake", parser_version="v1",
         artifacts=IngestionArtifacts(tmp_path / "document.json", tmp_path / "preview.md", artifact),
     )
-    monkeypatch.setattr("src.workspace.service.ingest_record", lambda **_kwargs: outcome)
+    monkeypatch.setattr("sourcecode.workspace.service.ingest_record", lambda **_kwargs: outcome)
     service.ingest_document(record.document_id)
-    assert service.workspace.get_document(record.document_id).status == "validated"
+    assert service.workspace.get_document(record.document_id).status == "review_ready"
 
-    monkeypatch.setattr("src.workspace.service.load_chunks", lambda _path: [chunk])
-    monkeypatch.setattr("src.workspace.service.index_document_chunks", lambda **_kwargs: 1)
+    monkeypatch.setattr("sourcecode.workspace.service.load_chunks", lambda _path: [chunk])
+    monkeypatch.setattr("sourcecode.workspace.service.index_document_chunks", lambda **_kwargs: 1)
+    import pytest
+    with pytest.raises(ValueError, match="manually approved"):
+        service.index_document(record.document_id, "kb_articles", tmp_path / "chroma")
+    service.approve_document(record.document_id)
     assert service.index_document(record.document_id, "kb_articles", tmp_path / "chroma") == 1
     assert service.workspace.get_document(record.document_id).status == "indexed"
 
@@ -155,8 +162,8 @@ def test_workspace_service_can_remove_from_index_and_delete_document(tmp_path, m
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("artifact", encoding="utf-8")
 
-    monkeypatch.setattr("src.workspace.service.PostgreSQLWorkspace", FakeWorkspace)
-    monkeypatch.setattr("src.workspace.service.ChromaChunkStore", FakeStore)
+    monkeypatch.setattr("sourcecode.workspace.service.PostgreSQLWorkspace", FakeWorkspace)
+    monkeypatch.setattr("sourcecode.workspace.service.ChromaChunkStore", FakeStore)
 
     service = WorkspaceService(
         database_url="postgresql://test",
@@ -183,7 +190,7 @@ def test_save_uploaded_file_uses_unique_checksum_directory(tmp_path, monkeypatch
         def __init__(self, _dsn: str) -> None:
             pass
 
-    monkeypatch.setattr("src.workspace.service.PostgreSQLWorkspace", FakeWorkspace)
+    monkeypatch.setattr("sourcecode.workspace.service.PostgreSQLWorkspace", FakeWorkspace)
     service = WorkspaceService(database_url="postgresql://test", upload_dir=tmp_path / "uploads")
 
     first = service.save_uploaded_file("article.docx", b"alpha", "document")

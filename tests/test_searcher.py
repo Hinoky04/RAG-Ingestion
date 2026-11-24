@@ -1,5 +1,5 @@
-from src.representation.schemas import RetrievalResult
-from src.retrieval.searcher import diversify_results
+from sourcecode.representation.schemas import RetrievalResult
+from sourcecode.retrieval.searcher import diversify_results
 
 
 def result(section_path: str, score: float, chunk_id: str) -> RetrievalResult:

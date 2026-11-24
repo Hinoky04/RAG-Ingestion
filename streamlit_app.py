@@ -1,3 +1,10 @@
+"""Streamlit screens for uploading, reviewing, indexing, and searching documents.
+
+Streamlit reruns this file after every click, so page selection and one-off
+notices live in session state. Document status itself always comes from the
+database.
+"""
+
 from __future__ import annotations
 
 import json
@@ -8,11 +15,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import streamlit as st
+from chromadb.errors import ChromaError
+from psycopg import Error as PostgreSQLError
 
-from src.indexing.chroma_store import DEFAULT_CHROMA_DIR, DEFAULT_COLLECTION_NAME
-from src.indexing.embedder import DEFAULT_MODEL_NAME
-from src.retrieval.searcher import search
-from src.workspace.service import WorkspaceService
+from sourcecode.indexing.chroma_store import DEFAULT_CHROMA_DIR, DEFAULT_COLLECTION_NAME
+from sourcecode.indexing.embedder import DEFAULT_MODEL_NAME
+from sourcecode.retrieval.searcher import search
+from sourcecode.workspace.service import WorkspaceService
 
 
 DEFAULT_COLLECTION = DEFAULT_COLLECTION_NAME
@@ -27,6 +36,7 @@ STATUS_LABELS = {
 }
 
 UPLOAD_VERSION_PATTERN = re.compile(r"^[1-9]\d*(?:\.\d+)?$")
+EXPECTED_OPERATION_ERRORS = (ValueError, RuntimeError, OSError, PostgreSQLError, ChromaError)
 
 
 def setup_local_model_env() -> None:
@@ -34,6 +44,7 @@ def setup_local_model_env() -> None:
 
 
 def inject_styles() -> None:
+    # No separate frontend in this submission, so CSS stays in this file.
     st.markdown(
         """
         <style>
@@ -269,6 +280,7 @@ def inject_styles() -> None:
         .st-key-retrieval-query-card [data-testid="stTextArea"] textarea { height:76px !important; min-height:76px !important; }
         .retrieval-field-label { color:var(--muted); font-size:.78rem; font-weight:750; margin-bottom:.35rem; }
         .retrieval-query-error { background: #fff4e5; border: 1px solid #f0c98b; border-left: 4px solid #d98219; border-radius: 9px; color: #7a4909; font-size: 0.86rem; font-weight: 700; margin-top: 1rem; padding: 0.78rem 0.9rem; }
+        .retrieval-inline-error { color: #a15d0b; font-size: 0.78rem; font-weight: 650; margin-top: 0.35rem; }
         .action-success-notice { background: #e2f6e9; border: 1px solid #9fd6b3; border-left: 4px solid #218657; border-radius: 9px; color: #0c5c36; font-size: 0.9rem; font-weight: 800; line-height: 1.5; margin: 0.8rem 0 1rem; padding: 0.78rem 0.9rem; }
         .st-key-markdown-preview-content pre { background:#f8faff !important; border:1px solid var(--line) !important; border-radius:8px !important; color:var(--ink) !important; max-height:380px; overflow:auto !important; white-space:pre-wrap !important; }
         .st-key-markdown-preview-content pre code { color:var(--ink) !important; overflow-wrap:anywhere !important; white-space:pre-wrap !important; word-break:break-word !important; }
@@ -323,10 +335,6 @@ def inject_styles() -> None:
     )
 
 
-def infer_document_type(file_name: str) -> str:
-    return "document" if Path(file_name).suffix.lower() in {".pdf", ".docx"} else "unknown"
-
-
 def read_text(path_value: str | None) -> str | None:
     if not path_value:
         return None
@@ -337,6 +345,12 @@ def read_text(path_value: str | None) -> str | None:
 def read_json(path_value: str | None):
     content = read_text(path_value)
     return json.loads(content) if content else None
+
+
+def user_facing_processing_error(error: Exception) -> str:
+    if isinstance(error, FileNotFoundError):
+        return "The original uploaded file is missing. Please upload the document again."
+    return str(error)
 
 
 def status_badge(status: str) -> str:
@@ -353,10 +367,6 @@ def parser_display_name(parser_name: str | None) -> str:
 
     name = (parser_name or "").strip()
     return re.sub(r"\s+v?\d+(?:\.\d+)*(?:[-+][\w.-]+)?$", "", name, flags=re.IGNORECASE) or "Unavailable"
-
-
-def document_label(document) -> str:
-    return f"{document.file_name} | {STATUS_LABELS.get(document.status, document.status)}"
 
 
 def metric_card(label: str, value: str | int, note: str) -> None:
@@ -452,11 +462,8 @@ def clear_chunk_search(search_key: str) -> None:
 
 
 def navigate_to(page: str) -> None:
+    # Change page in callback. If later, old page will flash one time.
     st.session_state["active_page"] = page
-
-
-def open_document_history() -> None:
-    navigate_to("Upload & history")
 
 
 def duplicate_upload_notice(file_name: str) -> str:
@@ -478,7 +485,7 @@ def open_existing_result(document_id: str, notice: str) -> None:
 def render_source_download_button(service: WorkspaceService, document_id: str, key: str, label: str = "Download source") -> None:
     try:
         file_name, file_bytes, mime = service.source_download(document_id)
-    except Exception as exc:
+    except EXPECTED_OPERATION_ERRORS as exc:
         st.caption(f"Source unavailable: {exc}")
         return
     st.download_button(label, data=file_bytes, file_name=file_name, mime=mime, key=key)
@@ -489,7 +496,7 @@ def render_navigation() -> str:
         ("Overview", "nav-overview"),
         ("Upload & history", "nav-upload-history"),
         ("Result review", "nav-result-review"),
-        ("Retrieval validation", "nav-retrieval-validation"),
+        ("Retrieval", "nav-retrieval-validation"),
     ]
     page_names = [page for page, _ in pages]
     active_page = st.session_state.get("active_page", "Overview")
@@ -513,21 +520,22 @@ def render_topbar() -> None:
     st.markdown(
         "<div class='topbar'><span class='topbar-title'>RAG Ingestion</span>"
         "<span class='topbar-subtitle'>Local document pipeline</span>"
-        "<span class='topbar-meta'><span class='topbar-dot'>●</span>Local PostgreSQL workspace</span></div>",
+        "<span class='topbar-meta'><span class='topbar-dot'>*</span>Local PostgreSQL</span></div>",
         unsafe_allow_html=True,
     )
 
 
 def render_overview(service: WorkspaceService) -> None:
+    # Streamlit runs this again after every click, so read database again.
     stats = service.workspace.stats()
     documents = service.workspace.list_documents()
     ready = stats.get("review_ready", 0) + stats.get("approved", 0) + stats.get("validated", 0)
     attention = stats.get("low_confidence", 0) + stats.get("failed", 0)
 
-    st.markdown("<div class='eyebrow'>Ingestion workspace</div>", unsafe_allow_html=True)
-    st.title("Pipeline overview")
+    st.markdown("<div class='eyebrow'>Workspace</div>", unsafe_allow_html=True)
+    st.title("Workspace overview")
     st.markdown(
-        "<p class='subtle'>A clear view of document intake, validation, indexing, and retrieval readiness.</p>",
+        "<p class='subtle'>Track documents from upload through review, indexing, and search.</p>",
         unsafe_allow_html=True,
     )
 
@@ -579,16 +587,22 @@ def render_overview(service: WorkspaceService) -> None:
                 st.markdown("<div class='overview-row-rule'></div>", unsafe_allow_html=True)
 
         history_action, _, upload_action = st.columns([1.7, 3.3, 1.35], vertical_alignment="center")
-        history_action.button("View full document history ->", key="overview-history", on_click=open_document_history)
+        history_action.button(
+            "View full document history ->",
+            key="overview-history",
+            on_click=navigate_to,
+            args=("Upload & history",),
+        )
         upload_action.button("Upload new source ->", key="overview-upload-source", on_click=navigate_to, args=("Upload & history",))
 
 
 def render_upload(service: WorkspaceService) -> None:
+    # Save file only after name, size and version are checked.
     with st.container(border=True, key="upload-intake-card"):
         st.markdown(
-            "<div class='eyebrow'>New intake</div>"
-            "<div class='section-title' style='margin-top:.45rem;'>Upload source</div>"
-            "<div class='section-copy'>Add one PDF or DOCX. The original filename is preserved for traceability.</div>",
+            "<div class='eyebrow'>Upload</div>"
+            "<div class='section-title' style='margin-top:.45rem;'>Add a document</div>"
+            "<div class='section-copy'>Choose one PDF or DOCX. The original filename is kept.</div>",
             unsafe_allow_html=True,
         )
         st.markdown("<div style='height:.85rem'></div>", unsafe_allow_html=True)
@@ -602,7 +616,7 @@ def render_upload(service: WorkspaceService) -> None:
             st.session_state.pop("duplicate_document_id", None)
             st.session_state.pop("duplicate_notice", None)
         st.markdown(
-            "<div class='upload-constraints'>Accepted formats: PDF, DOCX &nbsp;·&nbsp; Maximum size: 200MB &nbsp;·&nbsp; Processing stays local</div>",
+            "<div class='upload-constraints'>Accepted formats: PDF, DOCX &nbsp;·&nbsp; Maximum size: 200MB &nbsp;·&nbsp; Files stay on this machine</div>",
             unsafe_allow_html=True,
         )
         version_info, version_input, action_col, _ = st.columns([1.25, 0.75, 1.15, 2.2], gap="small", vertical_alignment="center")
@@ -678,8 +692,8 @@ def render_upload(service: WorkspaceService) -> None:
         st.session_state["selected_document_id"] = record.document_id
         try:
             service.ingest_document(record.document_id)
-        except Exception as exc:
-            st.error(f"Document registered, but processing failed: {exc}")
+        except EXPECTED_OPERATION_ERRORS as exc:
+            st.error(f"Document registered, but processing failed: {user_facing_processing_error(exc)}")
         else:
             st.session_state["document-action-notice"] = f"{record.file_name} is parsed and ready for inspection."
             st.session_state["active_page"] = "Result review"
@@ -724,11 +738,12 @@ def confirm_history_delete_dialog(service: WorkspaceService, documents, pending_
     st.caption(pending_names)
     confirm_col, cancel_col = st.columns(2)
     if confirm_col.button("Delete permanently", key="history-confirm-delete", type="primary", use_container_width=True):
+        # Try every selected document. One failed item should not block the others.
         failures: list[str] = []
         for document_id in pending_delete_ids:
             try:
                 service.delete_document(document_id, DEFAULT_CHROMA_DIR)
-            except Exception as exc:
+            except EXPECTED_OPERATION_ERRORS as exc:
                 failures.append(f"{document_id}: {exc}")
                 continue
             st.session_state.pop(f"history-delete-{document_id}", None)
@@ -749,6 +764,7 @@ def confirm_history_delete_dialog(service: WorkspaceService, documents, pending_
 
 
 def render_document_history(service: WorkspaceService) -> None:
+    # Delete mode uses same list, but buttons change to checkboxes.
     with st.container(border=True, key="document-history-card"):
         documents = service.workspace.list_documents()
         title_col, delete_col = st.columns([5, 1.35], vertical_alignment="top")
@@ -793,6 +809,7 @@ def render_document_history(service: WorkspaceService) -> None:
             "Indexed": "indexed",
             "Failed": "failed",
         }.get(selected_view)
+        # Search and status filter work together on the same local list.
         normalized_query = search_query.strip().lower()
         visible = [
             item
@@ -823,6 +840,7 @@ def render_document_history(service: WorkspaceService) -> None:
         table_columns = [0.55, 2.75, 0.7, 1.2, 1.0, 0.8] if delete_mode else [3.3, 0.7, 1.2, 1.0, 0.8]
         table_headers = ["", "File", "Version", "Updated", "Status", "Actions"] if delete_mode else ["File", "Version", "Updated", "Status", "Actions"]
         if delete_mode:
+            # Read checkbox state only after visible rows are known.
             selected_ids = selected_history_documents(visible)
             delete_controls = st.columns([3.6, 1.45], vertical_alignment="center")
             delete_controls[0].markdown(
@@ -892,13 +910,31 @@ def confirm_document_index_dialog(service: WorkspaceService, document_id: str, c
     confirm_col, cancel_col = st.columns(2)
     if confirm_col.button("Index and replace vectors", key=f"confirm-index-{document_id}", type="primary", use_container_width=True):
         try:
+            # Model can be missing. In this case old vectors should stay.
             count = service.index_document(document_id, DEFAULT_COLLECTION, DEFAULT_CHROMA_DIR)
-        except Exception as exc:
+        except EXPECTED_OPERATION_ERRORS as exc:
             st.error(f"Indexing failed: {exc}")
             return
         st.session_state["document-action-notice"] = f"Indexed {count} chunks. Older vectors for this document were replaced."
         st.rerun()
     if cancel_col.button("Cancel", key=f"cancel-index-{document_id}", use_container_width=True):
+        st.rerun()
+
+
+@st.dialog("Remove document from index?")
+def confirm_document_unindex_dialog(service: WorkspaceService, document_id: str) -> None:
+    st.markdown("Remove this document's vectors from ChromaDB?")
+    st.caption("The source file, approved chunks, and generated artifacts will stay in the workspace.")
+    confirm_col, cancel_col = st.columns(2)
+    if confirm_col.button("Remove from index", key=f"confirm-unindex-{document_id}", type="primary", use_container_width=True):
+        try:
+            service.remove_document_from_index(document_id, DEFAULT_CHROMA_DIR)
+        except EXPECTED_OPERATION_ERRORS as exc:
+            st.error(f"Remove from index failed: {exc}")
+            return
+        st.session_state["document-action-notice"] = "Vectors removed. The approved chunks can be indexed again."
+        st.rerun()
+    if cancel_col.button("Cancel", key=f"cancel-unindex-{document_id}", use_container_width=True):
         st.rerun()
 
 
@@ -921,6 +957,7 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
     markdown_text = read_text(document.artifacts.get("markdown"))
     canonical_json = read_json(document.artifacts.get("document_json")) or {}
     chunk_artifact = read_json(document.artifacts.get("chunks")) or []
+    # Database has short preview only. Full chunk text is in JSON artifact.
     full_chunk_text = {
         item.get("chunk_id"): item.get("text", "")
         for item in chunk_artifact
@@ -928,7 +965,7 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
     }
 
     with st.container(border=True, key="document-inspector-card"):
-        st.markdown("<div class='inspector-kicker'>Document inspector</div>", unsafe_allow_html=True)
+        st.markdown("<div class='inspector-kicker'>Document details</div>", unsafe_allow_html=True)
         name_col, status_col = st.columns([4.8, 1.2], vertical_alignment="center")
         name_col.markdown(f"<h2>{escape(document.file_name)}</h2>", unsafe_allow_html=True)
         status_col.markdown("<div class='document-status'>" + status_badge(document.status) + "</div>", unsafe_allow_html=True)
@@ -939,13 +976,19 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
             unsafe_allow_html=True,
         )
         st.markdown("<div class='document-toolbar'></div>", unsafe_allow_html=True)
+        # Button on right follows document status: approve, index, then remove.
         left_actions, spacer, right_action = st.columns([1.0, 4.4, 1.6], vertical_alignment="center")
         with left_actions:
-            if st.button("Re-process", key=f"process-{document.document_id}"):
+            if st.button(
+                "Re-process",
+                key=f"process-{document.document_id}",
+                disabled=document.status == "indexed",
+                help="Remove from index before re-processing." if document.status == "indexed" else None,
+            ):
                 try:
                     service.ingest_document(document.document_id)
-                except Exception as exc:
-                    st.error(f"Processing failed: {exc}")
+                except EXPECTED_OPERATION_ERRORS as exc:
+                    st.error(f"Processing failed: {user_facing_processing_error(exc)}")
                 else:
                     st.session_state["document-action-notice"] = "Document re-processed. Review and approve again before indexing."
                     st.rerun()
@@ -953,11 +996,14 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
             if right_action.button("Approve for indexing", key=f"approve-{document.document_id}", type="primary"):
                 try:
                     service.approve_document(document.document_id)
-                except Exception as exc:
+                except EXPECTED_OPERATION_ERRORS as exc:
                     st.error(f"Approval failed: {exc}")
                 else:
                     st.session_state["document-action-notice"] = "Document approved. You can index it now."
                     st.rerun()
+        elif document.status == "indexed":
+            if right_action.button("Remove from index", key=f"unindex-{document.document_id}"):
+                confirm_document_unindex_dialog(service, document.document_id)
         else:
             index_label = f"Index {len(chunks)} chunks" if chunks else "Index approved chunks"
             if right_action.button(
@@ -973,6 +1019,7 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
 
     tabs = st.tabs(["Summary", "Chunks", "Artifacts"])
     with tabs[0]:
+        # Summary joins latest run status with current document status.
         validation_summary = (validation or {}).get("summary", {})
         validation_events = (validation or {}).get("events", [])
         validation_run = (validation or {}).get("run_status") in {"review_ready", "approved", "validated", "low_confidence", "failed"}
@@ -1027,6 +1074,7 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
             st.json(validation or {"status": "No processing run recorded."})
 
     with tabs[1]:
+        # Number search uses chunk_index. Other text search uses full artifact text.
         search_key = f"chunk-search-{document.document_id}"
         st.markdown(
             f"<div class='chunk-summary'>{len(chunks)} validated chunks &middot; Search section names, chunk text, or technical IDs.</div>",
@@ -1087,6 +1135,7 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
                             st.markdown(f"<div class='chunk-full-text'>{evidence_html(full_text)}</div>", unsafe_allow_html=True)
 
     with tabs[2]:
+        # Artifact tab shows generated files, not another database copy.
         blocks = canonical_json.get("blocks", [])
         metadata = canonical_json.get("metadata", {})
         with st.container(border=True):
@@ -1134,23 +1183,24 @@ def render_document_detail(service: WorkspaceService, document_id: str) -> None:
 
 
 def render_result_review(service: WorkspaceService) -> None:
-    st.markdown("<div class='page-header'><div class='eyebrow'>Processing evidence</div>", unsafe_allow_html=True)
-    st.title("Result review")
+    st.markdown("<div class='page-header'><div class='eyebrow'>Review</div>", unsafe_allow_html=True)
+    st.title("Review results")
     st.markdown(
-        "<p class='subtle'>Inspect traceable parser output and validated chunks before writing vectors to ChromaDB.</p></div>",
+        "<p class='subtle'>Check the parsed document and chunks before indexing them in ChromaDB.</p></div>",
         unsafe_allow_html=True,
     )
     documents = service.workspace.list_documents()
     if not documents:
         with st.container(border=True, key="result-review-empty"):
             st.markdown(
-                "<div class='empty-state-title'>No result to review yet</div>"
+                "<div class='empty-state-title'>Nothing to review yet</div>"
                 "<div class='empty-state-copy'>Upload and process a PDF or DOCX before inspecting validation and chunks.</div>",
                 unsafe_allow_html=True,
             )
-            st.button("Upload a source →", key="upload-from-review-empty", on_click=navigate_to, args=("Upload & history",))
+            st.button("Upload a document ->", key="upload-from-review-empty", on_click=navigate_to, args=("Upload & history",))
         return
     selected_id = st.session_state.get("selected_document_id")
+    # Selected ID may point to a document deleted from history page.
     if selected_id not in {document.document_id for document in documents}:
         with st.container(border=True):
             st.markdown(
@@ -1158,26 +1208,27 @@ def render_result_review(service: WorkspaceService) -> None:
                 "<div class='review-empty-copy'>Choose a document from Upload &amp; history to inspect validation, chunks, and artifacts.</div>",
                 unsafe_allow_html=True,
             )
-            if st.button("Open document history →", key="open-history-from-review"):
-                open_document_history()
+            if st.button("Open history ->", key="open-history-from-review"):
+                navigate_to("Upload & history")
                 st.rerun()
         return
     render_document_detail(service, selected_id)
 
 
 def render_retrieval(service: WorkspaceService) -> None:
-    st.markdown("<div class='page-header'><div class='eyebrow'>Vector verification</div>", unsafe_allow_html=True)
-    st.title("Retrieval validation")
+    # This page returns source chunks only. It does not make an answer.
+    st.markdown("<div class='page-header'><div class='eyebrow'>Search</div>", unsafe_allow_html=True)
+    st.title("Retrieval")
     st.markdown(
-        "<p class='subtle'>Query indexed chunks and inspect the returned source evidence. No answer is generated.</p></div>",
+        "<p class='subtle'>Search indexed chunks and inspect the source evidence. This page does not generate answers.</p></div>",
         unsafe_allow_html=True,
     )
     stats = service.workspace.stats()
     indexed_count = stats.get("indexed", 0)
     with st.container(border=True, key="retrieval-query-card"):
         st.markdown(
-            "<div class='section-title'>Search indexed evidence</div>"
-            "<div class='section-copy'>Ask a question grounded in an indexed document, then inspect the returned chunks and citations.</div>",
+            "<div class='section-title'>Search indexed chunks</div>"
+            "<div class='section-copy'>Enter a question, then inspect the matching chunks and citations.</div>",
             unsafe_allow_html=True,
         )
         st.markdown("<div style='height:.75rem'></div>", unsafe_allow_html=True)
@@ -1198,14 +1249,19 @@ def render_retrieval(service: WorkspaceService) -> None:
                 placeholder="Ask a question whose answer appears in an indexed document.",
                 height=76,
             )
-        run = st.button("Run retrieval", type="primary", disabled=indexed_count == 0)
-    if indexed_count == 0:
-        st.markdown(
-            "<div class='retrieval-empty'><strong>No indexed documents yet.</strong><br>Approve and index a reviewed document before verifying retrieval.</div>",
-            unsafe_allow_html=True,
+        query_error = validate_retrieval_query(query) if query.strip() else None
+        if query_error:
+            st.markdown(f"<div class='retrieval-inline-error'>{escape(query_error)}</div>", unsafe_allow_html=True)
+        run = st.button(
+            "Run retrieval",
+            type="primary",
+            disabled=indexed_count == 0 or bool(query_error),
         )
+    if indexed_count == 0:
+        st.warning("No indexed documents are available. Approve and index a reviewed document before running retrieval.")
     if not run:
         return
+    # Validate again after button rerun because session text may have changed.
     query_error = validate_retrieval_query(query)
     if query_error:
         st.markdown(f"<div class='retrieval-query-error'>{escape(query_error)}</div>", unsafe_allow_html=True)
@@ -1213,7 +1269,7 @@ def render_retrieval(service: WorkspaceService) -> None:
     with st.spinner("Searching indexed chunks..."):
         try:
             results = search(query.strip(), DEFAULT_COLLECTION, DEFAULT_CHROMA_DIR, DEFAULT_MODEL_NAME, top_k=result_count)
-        except Exception as exc:
+        except EXPECTED_OPERATION_ERRORS as exc:
             st.error(f"Retrieval failed: {exc}")
             return
     if not results:
@@ -1221,7 +1277,7 @@ def render_retrieval(service: WorkspaceService) -> None:
         return
     st.markdown(
         f"<div class='eyebrow' style='margin-top:1.5rem;'>{len(results)} returned results</div>"
-        f"<h2>Evidence for “{escape(query.strip())}”</h2>",
+        f"<h2>Matches for “{escape(query.strip())}”</h2>",
         unsafe_allow_html=True,
     )
     for position, result in enumerate(results, start=1):
